@@ -1,6 +1,7 @@
 TARGET = libcinvoke.a
+DYNLIB = libcinvoke.so
 
-all: $(TARGET)
+all: $(TARGET) $(DYNLIB)
 
 clean:
 	rm -f *.o arch/*.o libcinvoke.a
@@ -13,8 +14,12 @@ $(TARGET): $(OBJS)
 	[BUILDSTATIC] $(TARGET) $(OBJS)
 	[RANLIB] $(TARGET)
 
+$(DYNLIB): $(OBJS)
+	rm -f $(DYNLIB) 
+	[BUILDSTATIC] -static-libgcc -shared -s -o $(DYNLIB) $(OBJS) -ldl
+	
 .c.o:
-	gcc [CFLAGS] -c $< -o $@
+	gcc [CFLAGS] -fPIC -c $< -o $@
 
 cinvoke.o: cinvoke.c cinvoke.h cinvoke-arch.h arch/[ARCH_HEADER] \
   cinvoke-private.h hashtable.h

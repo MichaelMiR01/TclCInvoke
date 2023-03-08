@@ -349,7 +349,6 @@ cinv_status_t cinv_function_invoke(CInvContext *context,
 	int i;
 	int stacksize = function->stacksize;
 	char *stackptr;
-
 	int len;
 	int memsize;
 	int regparm;
@@ -362,7 +361,6 @@ cinv_status_t cinv_function_invoke(CInvContext *context,
 	if (stacksize) {
 		ARCH_PUT_STACK_BYTES(stacksize);
 		ARCH_GET_STACK(stackptr);
-
 #if ARCH_STACK_SKIPTOP
 	#if ARCH_STACK_GROWS_DOWN
 		stackptr += ARCH_STACK_SKIPTOP;
@@ -412,11 +410,9 @@ cinv_status_t cinv_function_invoke(CInvContext *context,
 
 	ARCH_CALL(regparms, entrypoint)
 	ARCH_SAVE_RETURN(retval, function->rettype)
-
 	if (function->callconv != CINV_CC_STDCALL && stacksize != 0) {
 		ARCH_REMOVE_STACK_BYTES(stacksize)
 	}
-
 	if (function->hasreturn)
 		pull_value(&retval, function->rettype, returnvalout);
 	
@@ -431,7 +427,6 @@ void CDECL cinv_cbthunk(CInvCallback *cb) {
 	char *frameptr;
 	int i;
 	ArchRegParms regparms;
-
 	ARCH_SAVE_REGPARMS(regparms);
 
 	ARCH_GET_FRAME_PTR(frameptr)
@@ -501,9 +496,12 @@ void CDECL cinv_cbthunk(CInvCallback *cb) {
 		arch_get_register_parms(&regparms, cb->prototype->callconv,
 			cb->prototype->numparms, parameters, cb->prototype->parmtypes);
 	}
-
 	cb->cbfunc(cb->prototype, parameters, &returnptr, cb->userdata);
-	
+    for (int i = 0; i < cb->prototype->numparms; i++) {
+        free(parameters[i]);
+    }
+	free(parameters);
+
 	if (cb->prototype->hasreturn) {
 		set_value(&retval, cb->prototype->rettype, &returnptr);
 		ARCH_SET_RETURN(retval, cb->prototype->rettype)

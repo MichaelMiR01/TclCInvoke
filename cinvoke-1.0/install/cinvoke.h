@@ -157,14 +157,11 @@ typedef struct _CInvStructMember {
 	struct _CInvStructure *structtype;
 	cinv_type_t type;
 	int offset;
-	int nextoffset;
-	int isunion;
 } CInvStructMember;
 
 typedef struct _CInvStructure {
 	struct hashtable *members;
 	int nextoffset;
-	int lastoffset;
 	int finished;
 	int alignment;
 } CInvStructure;
@@ -308,12 +305,6 @@ CINVOKE_EXPORT CInvStructure *cinv_structure_create(CInvContext *context);
 * \param[in] type The type of the member to add.
 * \return A standard C/Invoke status code.
 */
-CINVOKE_EXPORT cinv_status_t cinv_structure_addmember_union(CInvContext *context,
-	CInvStructure *structure, const char *name, cinv_type_t type);
-
-CINVOKE_EXPORT cinv_status_t cinv_structure_addmember_array(CInvContext *context,
-	CInvStructure *structure, const char *name, cinv_type_t type, int array_size);
-
 CINVOKE_EXPORT cinv_status_t cinv_structure_addmember_value(CInvContext *context,
 	CInvStructure *structure, const char *name, cinv_type_t type);
 /** Adds a structure type member to a structure description.  Note that
@@ -328,26 +319,6 @@ CINVOKE_EXPORT cinv_status_t cinv_structure_addmember_value(CInvContext *context
 */
 CINVOKE_EXPORT cinv_status_t cinv_structure_addmember_struct(CInvContext *context,
 	CInvStructure *structure, const char *name, CInvStructure *type);
-
-
-
-/** Adds a structure directly to a structure description.  Note that
-* this is distinct from adding a pointer to a structure, to do that one
-* would call cinv_structure_addmember_value with a CINV_T_PTR argument.
-* \param[in] context A C/Invoke context.
-* \param[in] structure The structure description to add to.
-* \param[in] name The name of the member to add.
-* \param[in] type A structure description describing the type of the
-* member to add.  This description must be finished.
-* \return A standard C/Invoke status code.
-*/
-
-CINVOKE_EXPORT cinv_status_t cinv_structure_insert_struct(CInvContext *context,
-	CInvStructure *structure, const char *name, CInvStructure *type);
-
-CINVOKE_EXPORT cinv_status_t cinv_structure_insert_union_struct(CInvContext *context,
-	CInvStructure *structure, const char *name, CInvStructure *type);
-
 /** Finishes a structure, completing its description.  This function
 * must be called before using the structure description object.
 * \param[in] context A C/Invoke context.
@@ -389,9 +360,6 @@ CINVOKE_EXPORT void *cinv_structure_create_instance(CInvContext *context,
 CINVOKE_EXPORT cinv_status_t cinv_structure_instance_setvalue(CInvContext *context,
 	CInvStructure *structure, void *instance, const char *name,
 	void *value_ptr);
-CINVOKE_EXPORT cinv_status_t cinv_structure_instance_zerovalue(CInvContext *context,
-	CInvStructure *structure, void *instance, const char *name);
-
 /** Gets a pointer to the value of a member inside of a structure.  
 * \param[in] context A C/Invoke context.
 * \param[in] structure The structure description corresponding to
@@ -413,19 +381,6 @@ CINVOKE_EXPORT void *cinv_structure_instance_getvalue(CInvContext *context,
 * \param[in] instance The structure instance to delete.
 * \return A standard C/Invoke status code.
 */
-
-
-CINVOKE_EXPORT cinv_status_t cinv_structure_instance_zeroarrayvalue(CInvContext *context,
-	CInvStructure *structure, void *instance, const char *name, int index);
-
-CINVOKE_EXPORT cinv_status_t cinv_structure_instance_setarrayvalue(CInvContext *context,
-	CInvStructure *structure, void *instance, const char *name, int index,
-	void *value_ptr);
-
-CINVOKE_EXPORT void *cinv_structure_instance_getarrayvalue(CInvContext *context,
-	CInvStructure *structure, void *instance, const char *name, int index);
-
-
 CINVOKE_EXPORT cinv_status_t cinv_structure_delete_instance(CInvContext *context,
 	void *instance);
 /** Deletes a structure description.  Note that the descriptions of
