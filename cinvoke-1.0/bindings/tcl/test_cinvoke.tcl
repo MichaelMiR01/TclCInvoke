@@ -29,6 +29,8 @@ if {[info exists dllloaded]==0} {
 }
 
 typedef int TclOk
+typedef ptr Tcl_Obj*
+typedef ptr Tcl_Interp*
 
 set Tcl_ListObjGetElements  [ffidl::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
 ci function $Tcl_ListObjGetElements Tcl_ListObjGetElements TclOk {interp tclobj ptr.int tclobj}
@@ -37,8 +39,10 @@ set Tcl_CreateObjCommand    [ffidl::stubsymbol tcl stubs 96]; #Tcl_CreateObjComm
 ci function $Tcl_CreateObjCommand Tcl_CreateObjCommand ptr {interp string  tclproc clientdata ptr}
 #Tcl_Command (*tcl_CreateObjCommand) (Tcl_Interp *interp, const char *cmdName, Tcl_ObjCmdProc *proc, ClientData clientData, Tcl_CmdDeleteProc *deleteProc); /* 96 */
 set Tcl_GetString    [ffidl::stubsymbol tcl stubs 340]; #Tcl_GetString
-ci function $Tcl_GetString Tcl_GetString string tclobj
+ci function $Tcl_GetString Tcl_GetString string ptr
 #    char * (*tcl_GetString) (Tcl_Obj *objPtr); /* 340 */
+ci function [ffidl::stubsymbol tcl stubs 129] Tcl_Eval TclOk {Tcl_Interp* string}
+#/* 129 */ EXTERN int		Tcl_Eval(Tcl_Interp *interp, const char *script);
 
 ci function test_hellodata test_hellodata "" "string"
 ci function test1 test1 "" ""
@@ -106,6 +110,32 @@ proc myparray {ea} {
       puts "-------"
  }
 
+
+proc tcl_command_raw {cdata interp objc objv} {
+    puts "Getting arguments from $cdata $interp $objc $objv"
+
+    # get the clientdata 
+    CType _cdata clientdata
+    _cdata setptr $cdata mem_none
+    puts "got [_cdata get a] and [_cdata get b] from clientdata"
+    # takeover the objv arguments
+    CType objarr Tcl_Obj*
+    objarr setptr $objv mem_none
+    objarr length $objc
+    puts "len: [objarr length]"
+    # iterate over the arguments   
+    for {set i 0} {$i<$objc} {incr i} {
+        puts "Got arg $i [objarr get $i]"
+        puts "Has text [Tcl_GetString [objarr get $i]]"
+    }
+    Tcl_Eval $interp [list puts "ready with all objc [objarr get 0]"]
+    _cdata set a [expr [_cdata get a]+1]
+    _cdata set b [expr [_cdata get b]-1]
+    # cleanup
+    return 0
+}
+
+ 
 CType cd1 clientdata
 puts "Setting values"
 cd1 set a 10
@@ -113,9 +143,11 @@ cd1 set b 20
 #create a callback from tclproc with the classic tcl_objcommand signature
 puts "Creating Callback"
 CCallback tclcommand tcl_command int {clientdata ptr int ptr}
+CCallback tclcommandraw tcl_command_raw int {clientdata Tcl_Interp* int Tcl_Obj*}
 puts "Calling callback"
 # create tcl obj command with tclproc as callback and a cstruct as clientdata
 Tcl_CreateObjCommand  "." "test_tclcommand" [tclcommand getptr] [cd1 getptr] NULL
+Tcl_CreateObjCommand  "." "test_tclcommand_raw" [tclcommandraw getptr] [cd1 getptr] NULL
 
 
 # and test ist
@@ -125,6 +157,10 @@ set ::a(1) 2
 
 timetest {
     test_tclcommand $i "*2=" [expr $i*2] {list: l1 l2 l3} ::a
+    incr i
+} 1
+timetest {
+    test_tclcommand_raw $i "*2=" [expr $i*2] {list: l1 l2 l3} ::a
     incr i
 } 1
 fpause
@@ -421,7 +457,7 @@ foreach typ $tdefs {
 }
 
 puts "Exiting"
-CCleanup
+#CCleanup
 puts "OK"
 
 

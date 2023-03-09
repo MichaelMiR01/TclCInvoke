@@ -210,7 +210,7 @@ Tclh_PointerUnwrap(Tcl_Interp *interp,
     tag = PointerTypeGet(objP);
     pv  = PointerValueGet(objP);
     if(pv==NULL) {
-        printf("Got NULL pointer\n");
+        //printf("Got NULL pointer\n");
         // NULL pointers should be compatible to anything
     }
     /*

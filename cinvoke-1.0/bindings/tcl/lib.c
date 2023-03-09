@@ -50,7 +50,7 @@ void voidprintf(char* fmt,...) {
     //
 }
 
-DLLEXPORT char *hello_data="12345";
+DLLEXPORT char *hello_data=NULL;
 
 DLLEXPORT void test_hellodata(char* newtext) {
     dbgprintf ("old text is %s\n",hello_data);

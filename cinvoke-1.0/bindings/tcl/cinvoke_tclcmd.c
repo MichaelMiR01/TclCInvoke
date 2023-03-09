@@ -1050,6 +1050,7 @@ int get_value_from_obj(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, Tcl_O
             *(int*)size=len;
             return TCL_OK;            
         case _CINV_T_PTR_OBJ:
+            //printf("Getting tclobj\n");
             rv=Ffidl_GetPointerFromObj(interp,obj,&tw,_typename);
             *(PTR_TYPE*) value=(PTR_TYPE)tw;
             return rv;
@@ -1186,6 +1187,7 @@ Tcl_Obj* set_obj_from_value(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, 
           obj= Tcl_NewByteArrayObj(*(unsigned char **)value, size); //XXX get a real value here!!!
           return obj;
         case _CINV_T_PTR_OBJ:
+            //printf("Setting tclobj\n");
           obj= *(Tcl_Obj **)value;
           return obj;
         case _CINV_T_PTR_UTF8:
