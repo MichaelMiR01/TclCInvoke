@@ -1165,7 +1165,7 @@ Tcl_Obj* set_obj_from_value(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, 
             
         case _CINV_T_LONG:
             if(_isSigned==0)  {
-                obj= (Tcl_NewLongObj(*(unsigned long *)value));
+                obj= (Tcl_NewLongObj((unsigned long) *(unsigned long *)value));
            } else {
                 obj= (Tcl_NewLongObj(*(long *)value));
             }
@@ -2372,7 +2372,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
         case CSTRUCT_SETPTR: 
-            if (objc > 4) {
+            if (objc<3 || objc > 4) {
                 Tcl_WrongNumArgs(interp, 2, objv, "ptr subtype");
                 return TCL_ERROR;
             } else {
@@ -2388,7 +2388,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                         ts->allocsystem=-1;
                     }
                 }
-                Tcl_AppendResult (interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
+                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
                 if(Ffidl_GetPointerFromObj(interp,objv[2],&newinstance,structname)!=TCL_OK) return TCL_ERROR;
                 if(newinstance==NULL) {
                     Tcl_AppendResult(interp, "Couldn't load instance from ptr, PTR is NULL",NULL);
@@ -2734,7 +2734,7 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
         case CTYPE_SETPTR: 
-            if ((objc < 2) || (objc > 4)) {
+            if ((objc < 3) || (objc > 4)) {
                 Tcl_WrongNumArgs(interp, 2, objv, "ptr subtype");
                 return TCL_ERROR;
             } else {
@@ -2754,6 +2754,7 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                     }
                 }
                 PTR_TYPE* ptr=NULL;
+                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
                 if(Ffidl_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) {
                     return TCL_ERROR;
                 }
@@ -2792,7 +2793,7 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
     PTR_TYPE* valptr;
     
     	
-	if (objc < 2 || objc > 5) {
+	if (objc < 3 || objc > 5) {
 		Tcl_WrongNumArgs(interp, 1, objv, "typename type [length] [value]");
 		return TCL_ERROR;
 	}
@@ -3106,7 +3107,7 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             return TCL_OK;
         case CDATA_SETPTR: 
             if ((objc < 3) || (objc > 4)) {
-                Tcl_WrongNumArgs(interp, 2, objv, "ptr val subtype");
+                Tcl_WrongNumArgs(interp, 2, objv, "ptr subtype");
                 return TCL_ERROR;
             } else {
                 simpleptr=0;
