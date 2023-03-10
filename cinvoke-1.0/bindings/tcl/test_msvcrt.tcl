@@ -24,7 +24,7 @@ proc timetest {code times} {
 
 if {[info exists dllloaded]==0} {
     load ./cinvoke_tclcmd[info sharedlibextension]
-    CInvoke msvcrt[info sharedlibextension] CINV_CC_CDECL ci
+    CInvoke msvcrt[info sharedlibextension] ci
     set dllloaded 1 
 }
 
