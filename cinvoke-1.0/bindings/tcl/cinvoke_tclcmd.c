@@ -129,7 +129,7 @@ static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **
   if(status!=TCL_OK) {
       return TCL_ERROR;
   }
-  w=pvP;
+  w=(Tcl_WideInt)pvP;
   if(w==0) {
       *ptr=NULL;
   } else {
