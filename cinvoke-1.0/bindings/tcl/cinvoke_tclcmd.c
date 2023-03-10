@@ -1777,7 +1777,7 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
             "CINV_CC_CDECL",  "CINV_CC_STDCALL", "CINV_CC_FASTCALL", 
             (char *) NULL
         };
-        if (Tcl_GetIndexFromObj(interp, objv[3], options, "option", 0,
+        if (Tcl_GetIndexFromObj(interp, objv[2], options, "option", 0,
             &index) != TCL_OK) {
             return TCL_ERROR;
             }
