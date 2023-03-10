@@ -269,6 +269,15 @@ typedef struct _CInv_Type {
 
 #define init_type(size,cinv_basetype,cinv_inttype,alignment,isSigned,isPtr) { size, cinv_basetype, cinv_inttype, alignment, isSigned, isPtr ,NULL,NULL}
 
+/* just to remember the cc, delete this later!!!!*/
+typedef enum _int__ {
+	__CINV_CC_CDECL = 0, /**< The cdecl calling convention, the most common convention on x86. */
+	__CINV_CC_STDCALL = 1, /**< The stdcall calling convention, the default convention for the Windows API. */
+	__CINV_CC_FASTCALL = 2 /**< Yet another, rarely used, Windows calling convention */
+} int__;
+
+
+
 void def_type(CInv_Type* strt, size_t _size, int _cinv_basetype,int _cinv_inttype,int _alignment,int _isSigned,int _isPtr,char* _typename) {
 strt->size=_size;
 strt->cinv_basetype=_cinv_basetype;
@@ -300,7 +309,7 @@ typedef struct _TclCInvokeState {
 	Tcl_LoadHandle tcllib;
 	CInvContext *ctx;
 	CInvLibrary *lib;
-	cinv_callconv_t cc;
+	int callingconvention;
 } TclCInvokeState;
 typedef struct _TclCStructDef {
 	Tcl_Interp *interp;
@@ -336,6 +345,7 @@ typedef struct _TclCCallbackState {
 	CInvContext *ctx;
 	CInvFunction *prototype;
 	CInvCallback* callback;
+	int callingconvention;
 	char* tcl_procname;
 	void* entrypoint;
 
@@ -351,6 +361,7 @@ typedef struct _TclCCalloutState {
 	Tcl_Interp *interp;
 	CInvContext *ctx;
 	CInvFunction *cfunc;
+	int callingconvention;
 	void* entrypoint;
 	char* returnstring;
 
@@ -1220,6 +1231,7 @@ static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl
     char* paramsig="";
     int ret_type=-1;
     int int_type, cinv_type,len, is_PtrType;
+    int callingconvention;
     
 	CInv_Type* xtype,*rxtype;
     CInvContext *ctx ;
@@ -1318,7 +1330,13 @@ static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl
     }
 
     Tcl_ResetResult(interp);
-    CInvFunction *f = cinv_function_create(ctx, CINV_CC_DEFAULT, retsig, paramsig);
+    if(ts->callingconvention<0) {
+        callingconvention=CINV_CC_DEFAULT;
+    } else {
+        callingconvention=ts->callingconvention;
+    }
+        
+    CInvFunction *f = cinv_function_create(ctx, callingconvention, retsig, paramsig);
     //printf("Calling %s %s\n",retsig,paramsig);
     if (!cinv_function_invoke(ctx, f, funcptr, &returnval, parameters)) {
         Tcl_AppendResult(interp,"invoke failed: \n", cinv_context_geterrormsg(ctx),NULL);
@@ -1707,6 +1725,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 tsc->interp=interp;
                 tsc->ctx=ctx;
                 tsc->cfunc=NULL;
+                tsc->callingconvention=ts->callingconvention; //--> use CINV_CC_DEFAULT
                 tsc->entrypoint=funcptr;
                 tsc->paramlength=paramlength;
                 tsc->paramlist=Tcl_DuplicateObj(objv[5]);
@@ -1730,8 +1749,8 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	//CInvLibrary *lib;
     Tcl_LoadHandle libhandle;
 
-	if (objc < 2 || objc > 3) {
-		Tcl_WrongNumArgs(interp, 1, objv, "libraryname handle");
+	if (objc < 2 || objc > 4) {
+		Tcl_WrongNumArgs(interp, 1, objv, "libraryname handle [callingconvention]");
 		return TCL_ERROR;
 	}
 
@@ -1745,12 +1764,27 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	ts->ctx = ctx;
 	ts->tcllib = NULL;
 	ts->lib=NULL;
+	ts->callingconvention=CINV_CC_DEFAULT;
 	if(strlen(Tcl_GetString(objv[1]))>0) {
 	    Tcl_LoadFile(interp, objv[1], NULL, 0, NULL, &libhandle);
         ts->tcllib = libhandle;
         ts->interp=interp;
     }
-	
+    
+	if (objc== 4) {
+	    int index;
+        static CONST char *options[] = {
+            "CINV_CC_CDECL",  "CINV_CC_STDCALL", "CINV_CC_FASTCALL", 
+            (char *) NULL
+        };
+        if (Tcl_GetIndexFromObj(interp, objv[3], options, "option", 0,
+            &index) != TCL_OK) {
+            return TCL_ERROR;
+            }
+        ts->callingconvention=index;
+    }
+
+
 	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[objc-1]),CInvokeHandleCmd,ts,CInvokeCCommandDeleteProc);
 
 	return TCL_OK;
@@ -3363,6 +3397,7 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	TclCCallbackState *ts;
 	CInvContext *ctx;
     int return_type=-1;
+    int callingconvention;
     //char buf[256];
  	Tcl_Obj** paramlist;
 	int paramlength;
@@ -3385,6 +3420,8 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	ts->tcl_procname=tcl_strdup(Tcl_GetString(objv[2]));
     ts->int_type=-1;
     ts->return_type=-1;
+    ts->callingconvention=-1; //--> use CINV_CC_DEFAULT
+
 	char* retstr=Tcl_GetString(objv[3]);
 	if(strlen(retstr)>0) { 
 	    ts->returninfo=tcl_strdup(retstr);
@@ -3426,8 +3463,11 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	    paramsig=NULL;
 	}
 	Tcl_DeleteCommand(interp,Tcl_GetString(objv[1]));
+    if(ts->callingconvention<0) {
+        callingconvention=CINV_CC_DEFAULT;
+    } 
 
-	CInvFunction *proto = cinv_function_create(ctx, CINV_CC_DEFAULT, retsig, paramsig);
+	CInvFunction *proto = cinv_function_create(ctx, callingconvention, retsig, paramsig);
 	ts->prototype=proto;
     		
     CInvCallback *cb = cinv_callback_create(ctx, proto, (void*)ts, CCallbackCallback);
