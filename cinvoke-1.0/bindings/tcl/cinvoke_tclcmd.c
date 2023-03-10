@@ -76,7 +76,6 @@ void tcl_printf(const char *fmt, ...);
 # define PTR_TYPE long
 # define TCL_NEWPTROBJ Tcl_NewLongObj
 static Tcl_Obj *Ffidl_NewPointerObj(PTR_TYPE *ptr,char* tag) {
-    //printf("new long pointer %p %s\n",ptr,tag);
     Tcl_Obj* o=Tcl_NewStringObj(tag,-1);
     Tcl_Obj*rv= Tclh_PointerWrap(ptr,o);
     return rv;
@@ -87,7 +86,6 @@ static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **
   long l;
   void *pvP=NULL;
   Tcl_Obj* otag;
-  //status = Tcl_GetLongFromObj(interp, obj, &l);
   if(tag!=NULL) {
       otag= Tcl_NewStringObj(tag,-1);
   } else {
@@ -98,8 +96,6 @@ static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **
   if(status!=TCL_OK) {
       return TCL_ERROR;
   }
-  //Tcl_GetLongFromObj(interp, obj, &l);
-  //printf("%s got pvp %p (%li)\n",Tcl_GetString(obj),pvP,pvP);
   l=(long) pvP;
   if(l==0) {
       *ptr=NULL;
@@ -109,30 +105,30 @@ static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **
   }
   return status;
 }
-static Tcl_Obj *PointerCast(Tcl_Interp* interp, Tcl_Obj* obj, Tcl_Obj* newtag) {
-    void *pvP=NULL;
-    Tclh_PointerUnwrap(interp, obj, &pvP, NULL);
-    Tcl_Obj*rv= Tclh_PointerWrap(pvP,newtag);
-    return rv;
-}    
-
-
 #  define FFIDL_GETPOINTER FFIDL_GETINT
 #else
 #  define PTR_TYPE Tcl_WideInt
 # define TCL_NEWPTROBJ Tcl_NewWideIntObj
 static Tcl_Obj *Ffidl_NewPointerObj(PTR_TYPE *ptr) {
-    //printf("new wide pointer %p\n",ptr);
-    //return Tclh_PointerWrap(ptr,Tcl_NewStringObj("test",-1));
-    return Tcl_NewWideIntObj((PTR_TYPE)ptr);
+    Tcl_Obj* o=Tcl_NewStringObj(tag,-1);
+    Tcl_Obj*rv= Tclh_PointerWrap(ptr,o);
+    return rv;
 }
 static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **ptr) {
   int status;
   Tcl_WideInt w;
-  void *pvP;
-  //status = Tcl_GetWideIntFromObj(interp, obj, &w);
-  Tclh_PointerUnwrap(interp, obj, pvP, Tcl_NewStringObj("test",-1));
-  //printf("got pvp %p\n",pvP);
+  void *pvP=NULL;
+  Tcl_Obj* otag;
+  if(tag!=NULL) {
+      otag= Tcl_NewStringObj(tag,-1);
+  } else {
+      otag= Tcl_NewStringObj("ptr",-1);
+  }
+  status =Tclh_PointerUnwrap(interp, obj, &pvP, otag);
+  Tcl_DecrRefCount(otag);
+  if(status!=TCL_OK) {
+      return TCL_ERROR;
+  }
   w=pvP;
   if(w==0) {
       *ptr=NULL;
@@ -142,8 +138,13 @@ static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **
   return status;
 }
 #  define FFIDL_GETPOINTER FFIDL_GETWIDEINT
-
 #endif
+static Tcl_Obj *PointerCast(Tcl_Interp* interp, Tcl_Obj* obj, Tcl_Obj* newtag) {
+    void *pvP=NULL;
+    Tclh_PointerUnwrap(interp, obj, &pvP, NULL);
+    Tcl_Obj*rv= Tclh_PointerWrap(pvP,newtag);
+    return rv;
+}    
 
 #include "ffidl_stubs.c"
 
