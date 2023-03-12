@@ -1,9 +1,7 @@
 /*
- *  TclTCC - Tcl binding to Tiny C Compiler
+ *  tclcinvoke - Tcl binding to CInvoke
  * 
- *  Copyright (c) 2007 Mark Janssen
- *  Copyright (c) 2014 Roy Keene
- *  Modified 2022 by Michael Richter
+ *  2022 by Michael Richter
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -38,7 +36,6 @@ void tcl_printf(const char *fmt, ...);
 
 #include <setjmp.h>
 
-
 // don't include unistd.h since this conflicts with tcl/compat/unistd.h
 #define	_UNISTD_H	1
 #include <cinvoke.h>
@@ -54,8 +51,6 @@ void tcl_printf(const char *fmt, ...);
 #endif
 
 /* taken from ffidl project and modified a bit to our needs */
-
-
 /*
  * Tcl object type used for representing pointers within Tcl.
  *
@@ -2812,6 +2807,10 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
 	
     char needle[] = "()";
     if(strstr(Tcl_GetString(objv[2]), needle)!=NULL) {
+        if(objc<4) {
+            Tcl_WrongNumArgs(interp, 1, objv, "typename type length [value]");
+            return TCL_ERROR;
+        }
         istypedarray=1;
 	} 
 	if(istypedarray) { 
@@ -3637,8 +3636,6 @@ int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
 	
 	Ffidl_Init(interp);
 	
-	Tcl_SetVar(interp,  "::CINVOKE", "1", 0);
-	
 	/* static  unsigned types */
     static CInv_Type cinv_type_uchar = init_type(sizeof(char), _CINV_T_CHAR, _CINV_T_CHAR, 0, 0, 0);
     static CInv_Type cinv_type_ushort = init_type(sizeof(short), _CINV_T_SHORT, _CINV_T_SHORT,0, 0, 0);
@@ -3729,6 +3726,6 @@ int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
     ADDINTTYPE(time_t);
     ADDINTTYPE(uid_t);
 #endif
-        
+    Tcl_PkgProvide(interp, "tclcinvoke", "1.0");        
 	return TCL_OK;
 }
