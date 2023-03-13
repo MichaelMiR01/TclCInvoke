@@ -1895,7 +1895,7 @@ static int DeleteStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
                 return TCL_ERROR;
             }
             if(DeleteUnion(interp, ts,sublist,sublength, tstruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             continue;
@@ -1963,6 +1963,10 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
     int sublength;
 	
 	tstruct= outstruct;
+	if ((llength%2>0)||(llength==0)) {
+	    Tcl_AppendResult(interp, "Definition of struct is not a valid list\n",NULL);
+	    return TCL_ERROR;
+	}
 	
 	for (int i=0;i<llength;i+=2) {
         elem=Tcl_GetString(deflist[i+1]);
@@ -1972,7 +1976,7 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
                 return TCL_ERROR;
             }
             if(CreateStruct(interp, ts,sublist,sublength, &substruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             // create name for substuct
@@ -1990,7 +1994,7 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
                 return TCL_ERROR;
             }
             if(CreateUnion(interp, ts,sublist,sublength, tstruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             continue;
@@ -2037,7 +2041,10 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
     CInvStructure *substruct;
     Tcl_Obj **sublist;
     int sublength;
-	
+	if ((llength%2>0)||(llength==0)) {
+	    Tcl_AppendResult(interp, "Definition of struct is not a valid list\n",NULL);
+	    return TCL_ERROR;
+	}
 	for (int i=0;i<llength;i+=2) {
         elem=Tcl_GetString(deflist[i+1]);
         int itype=-1;
@@ -2047,7 +2054,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
                 return TCL_ERROR;
             }
             if(CreateStruct(interp, ts,sublist,sublength, &substruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             // create name for substuct
@@ -2064,7 +2071,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
                 return TCL_ERROR;
             }
             if(CreateUnion(interp, ts,sublist,sublength, tstruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),NULL);
+                Tcl_AppendResult(interp,"Error creating union from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             continue;
@@ -2420,7 +2427,7 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	CInvContext *ctx;
 	CInvStructure *tstruct;
 	//char buf[256];
-	if (objc < 3 || objc > 4) {
+	if (objc < 4 || objc > 4) {
 		Tcl_WrongNumArgs(interp, 1, objv, "structname structtype definition");
 		return TCL_ERROR;
 	}
@@ -2437,11 +2444,11 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	
 	Tcl_Obj **deflist;
 	int llength;
-	
 
 	if (Tcl_ListObjGetElements(interp, objv[3], &llength, &deflist)!=TCL_OK) {
 	    return TCL_ERROR;
 	}
+	//printf("Got definition length %d\n",llength);
 	ts->typename=tcl_strdup(Tcl_GetString(objv[2]));
 	ts->deflist=Tcl_DuplicateObj(objv[3]);
 	ts->deflen=llength;
@@ -2450,7 +2457,7 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	ts->binsize=0;
 	
 	if(CreateStruct(interp, ts,deflist,llength, &tstruct)!=TCL_OK) {
-	    Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(objv[2]),NULL);
+	    Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(objv[2]),"\n",NULL);
 	    return TCL_ERROR;
 	}
 	
@@ -2475,7 +2482,7 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_Obj * CONST objv[]){
 	TclCStructDef *ts;
 	//char buf[256];
-	if (objc < 2 || objc > 3) {
+	if (objc < 3 || objc > 3) {
 		Tcl_WrongNumArgs(interp, 1, objv, "structname definition");
 		return TCL_ERROR;
 	}
@@ -2840,7 +2847,7 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
         //printf("Instancing struct %s\n",tname);
         TclCStructDef *entry=entry_lookup(&cinvclient->structs,tname);
         if(entry==NULL) {
-            Tcl_AppendResult(interp,"Struct not found ",Tcl_GetString(objv[2]),NULL);
+            Tcl_AppendResult(interp,"Struct not found ",tname,NULL);
             return TCL_ERROR;
         }
         ts->int_type=_CINV_T_PTR;
@@ -2854,7 +2861,10 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
         cmdobjv[1]=objv[1];
         cmdobjv[2]=objv[2];
         cmdobjv[3]=entry->definition;
-        CStructCreateCmd(NULL,interp,4,cmdobjv);
+        if(CStructCreateCmd(NULL,interp,4,cmdobjv)!=TCL_OK) {
+            Tcl_AppendResult(interp, "Couldn't create instance of ",tname, "\n",NULL);
+            return TCL_ERROR;
+        }
         Tcl_DecrRefCount(cmdobjv[0]);
         cinv_free(ts,MEM_TCL);
         if (!cinv_context_delete(ctx)) {
@@ -3214,7 +3224,11 @@ static int CDATACreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
 		Tcl_WrongNumArgs(interp, 1, objv, "typename length");
 		return TCL_ERROR;
 	}
-
+    if(Tcl_GetIntFromObj(interp,objv[2],&datasize)!=TCL_OK) return TCL_ERROR;
+    if(datasize<=0) {
+        Tcl_AppendResult(interp, "datasize must be greater 0\n",NULL);
+        return TCL_ERROR;
+    }
 	ctx = cinv_context_create();
 	
 	if (ctx == NULL) {
@@ -3230,7 +3244,7 @@ static int CDATACreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
     ts->isarray=0;
     
     ts->allocsystem=MEM_TCL;
-    if(Tcl_GetIntFromObj(interp,objv[2],&datasize)!=TCL_OK) return TCL_ERROR;
+    
     ts->int_type=itype;
 	ts->cinv_type=_CINV_T_PTR;
     ts->xtype=cinv_alloc(sizeof(CInv_Type), MEM_TCL,"CDATACreateCmd",__LINE__);
