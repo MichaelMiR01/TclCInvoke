@@ -1,30 +1,31 @@
 TARGET = cinvoke_tclcmd
 DYNLIB = lib
 
+WIN32=
 CC=gcc
 
-LIBS=-ltclstub8.6 -L../../lib -Llib
-CPPFLAGS=-Wall -DMEMDEBUG -O2 -fPIC -shared -s -D_GNU_SOURCE -DHAVE_TCL_H -DUSE_TCL_STUBS -I../../lib
+LIBS=-L../../lib -Llib
+CPPFLAGS=-Wall -DNOMEMDEBUG -O2 -shared -s -D_GNU_SOURCE -DHAVE_TCL_H -DUSE_TCL_STUBS -I../../lib
 
-#echo gcc ${CPPFLAGS} -c cinvoke_tclcmd.c  ${LIBS} 
-#gcc ${CPPFLAGS} -c cinvoke_tclcmd.c  ${LIBS} 
-#gcc ${CPPFLAGS} -o cinvoke_tclcmd.so cinvoke_tclcmd.o ${LIBS} -L. -l:libcinvoke.a -Wl,-rpath=. 
+XCC=i686-w64-mingw32-gcc 
+XCPPFLAGS=-m32 $(CPPFLAGS) -D__USE_MINGW_ANSI_STDIO
+XINC=-Igeneric -Igeneric/win
 
-#$(CC) -shared -s -fPIC lib.c -o lib.so   
-
-all: $(TARGET) $(DYNLIB)
+all: $(TARGET)
 
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.so *.dll
 
 SRCS = cinvoke_tclcmd.c lib.c
 
-
-$(TARGET): $(SRCS)
-	. ./conf_tcl.sh; \
-	$(CC)  $(CPPFLAGS)  -o $(TARGET).so $(TARGET).c $${TCC4TCL_CFLAGS} $${TCC4TCL_LIBS} ${LIBS} -L. -l:libcinvoke.a -Wl,-rpath=. -ldl
-	
-$(DYNLIB): $(SRCS)
+$(TARGET):
+ifdef WIN32
+	rm -f $(DYNLIB).o $(DYNLIB).dll $(TARGET).o $(TARGET).dll
+	$(XCC)  $(XCPPFLAGS)  -o $(TARGET).dll $(TARGET).c $(XINC) $(LIBS) -ltclstub86  -L. -l:libcinvoke.a 
+	$(XCC) -Wall -shared -s $(DYNLIB).c -o $(DYNLIB).dll 
+else
 	rm -f $(DYNLIB).o $(DYNLIB).so
-	$(CC) -g -Wall -fPIC -static-libgcc -shared -s $(DYNLIB).c -o $(DYNLIB).so -ldl
-	
+	. ./conf_tcl.sh; \
+	$(CC)  $(CPPFLAGS)  -fPIC -o $(TARGET).so $(TARGET).c $${TCC4TCL_CFLAGS} $${TCC4TCL_LIBS} ${LIBS}  -L. -l:libcinvoke.a -Wl,-rpath=. -ldl
+	$(CC) -Wall -fPIC -shared -s $(DYNLIB).c -o $(DYNLIB).so
+endif

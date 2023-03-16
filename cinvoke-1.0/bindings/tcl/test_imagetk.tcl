@@ -8,8 +8,10 @@ proc pause {{message "Hit Enter to continue ==> "}} {
     gets stdin
 }
 
+lappend auto_path .
+package require tclcinvoke
+
 if {[info exists dllloaded]==0} {
-    load ./cinvoke_tclcmd[info sharedlibextension]
     CInvoke ./lib[info sharedlibextension] ci
     set dllloaded 1 
 }

@@ -14,8 +14,9 @@ proc timetest {code times} {
     puts ready
 }
 
+lappend auto_path .
+package require tclcinvoke
 if {[info exists dllloaded]==0} {
-    load ./cinvoke_tclcmd[info sharedlibextension]
     CInvoke ./lib[info sharedlibextension] ci
     set dllloaded 1 
 }

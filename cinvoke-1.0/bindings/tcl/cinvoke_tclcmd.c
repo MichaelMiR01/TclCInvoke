@@ -50,98 +50,178 @@ void tcl_printf(const char *fmt, ...);
 #define max(a,b)            (((a) > (b)) ? (a) : (b))
 #endif
 
-/* taken from ffidl project and modified a bit to our needs */
-/*
- * Tcl object type used for representing pointers within Tcl.
- *
- * We wrap an existing "expr"-compatible Tcl_ObjType, in order to easily support
- * pointer arithmetic and formatting withing Tcl.  The size of the Tcl_ObjType
- * needs to match the pointer size of the platform: long on LP64, Tcl_WideInt on
- * LLP64 (e.g. WIN64).
- */
-#if SIZEOF_VOID_P == SIZEOF_LONG
-#  define FFIDL_POINTER_IS_LONG 1
-#elif SIZEOF_VOID_P == 8 && defined(HAVE_WIDE_INT)
-#  define FFIDL_POINTER_IS_LONG 0
-#else
-#  error "pointer size not supported"
-#endif
-#include "cffi_pointer.c"
-#if FFIDL_POINTER_IS_LONG
-# define PTR_TYPE long
-# define TCL_NEWPTROBJ Tcl_NewLongObj
-static Tcl_Obj *Ffidl_NewPointerObj(PTR_TYPE *ptr,char* tag) {
-    Tcl_Obj* o=Tcl_NewStringObj(tag,-1);
-    Tcl_Obj*rv= Tclh_PointerWrap(ptr,o);
-    return rv;
-    
-}
-static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **ptr,char* tag) {
-  int status;
-  long l;
-  void *pvP=NULL;
-  Tcl_Obj* otag;
-  if(tag!=NULL) {
-      otag= Tcl_NewStringObj(tag,-1);
-  } else {
-      otag= Tcl_NewStringObj("ptr",-1);
-  }
-  status =Tclh_PointerUnwrap(interp, obj, &pvP, otag);
-  Tcl_DecrRefCount(otag);
-  if(status!=TCL_OK) {
-      return TCL_ERROR;
-  }
-  l=(long) pvP;
-  if(l==0) {
-      *ptr=NULL;
-      return TCL_OK;
-  } else {
-      *ptr = (PTR_TYPE *)l;
-  }
-  return status;
-}
-#  define FFIDL_GETPOINTER FFIDL_GETINT
-#else
-#  define PTR_TYPE Tcl_WideInt
-# define TCL_NEWPTROBJ Tcl_NewWideIntObj
-static Tcl_Obj *Ffidl_NewPointerObj(PTR_TYPE *ptr) {
-    Tcl_Obj* o=Tcl_NewStringObj(tag,-1);
-    Tcl_Obj*rv= Tclh_PointerWrap(ptr,o);
-    return rv;
-}
-static int Ffidl_GetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, PTR_TYPE **ptr) {
-  int status;
-  Tcl_WideInt w;
-  void *pvP=NULL;
-  Tcl_Obj* otag;
-  if(tag!=NULL) {
-      otag= Tcl_NewStringObj(tag,-1);
-  } else {
-      otag= Tcl_NewStringObj("ptr",-1);
-  }
-  status =Tclh_PointerUnwrap(interp, obj, &pvP, otag);
-  Tcl_DecrRefCount(otag);
-  if(status!=TCL_OK) {
-      return TCL_ERROR;
-  }
-  w=(Tcl_WideInt)pvP;
-  if(w==0) {
-      *ptr=NULL;
-  } else {
-      *ptr = (PTR_TYPE *)w;
-  }
-  return status;
-}
-#  define FFIDL_GETPOINTER FFIDL_GETWIDEINT
-#endif
-static Tcl_Obj *PointerCast(Tcl_Interp* interp, Tcl_Obj* obj, Tcl_Obj* newtag) {
-    void *pvP=NULL;
-    Tclh_PointerUnwrap(interp, obj, &pvP, NULL);
-    Tcl_Obj*rv= Tclh_PointerWrap(pvP,newtag);
-    return rv;
-}    
+#include "pointerhelper.c"
 
-#include "ffidl_stubs.c"
+#define LOOKUP_TK_STUBS
+
+#if defined(LOOKUP_TK_STUBS)
+static const char *MyTkInitStubs(Tcl_Interp *interp, char *version, int exact);
+static void *tkStubsPtr, *tkPlatStubsPtr, *tkIntStubsPtr, *tkIntPlatStubsPtr, *tkIntXlibStubsPtr;
+#else
+#define tkStubsPtr NULL
+#define tkPlatStubsPtr NULL
+#define tkIntStubsPtr NULL
+#define tkIntPlatStubsPtr NULL
+#define tkIntXlibStubsPtr NULL
+#endif
+
+/* usage: cinv::stubsymbol library stubstable symbolnumber -> address */
+static int tcl_cinv_stubsymbol(ClientData clientData, Tcl_Interp *interp, int objc, Tcl_Obj *CONST objv[])
+{
+  enum {
+    command_ix,
+    library_ix,
+    stubstable_ix,
+    symbol_ix,
+    nargs
+  };
+
+  int library, stubstable, symbolnumber; 
+  void **stubs = NULL, *address;
+  static const char *library_names[] = {
+    "tcl", 
+#if defined(LOOKUP_TK_STUBS)
+    "tk",
+#endif
+    NULL
+  };
+  enum libraries {
+    LIB_TCL,
+#if defined(LOOKUP_TK_STUBS)
+    LIB_TK,
+#endif
+  };
+  static const char *stubstable_names[] = {
+    "stubs", "intStubs", "platStubs", "intPlatStubs", "intXLibStubs", NULL
+  };
+  enum stubstables {
+    STUBS, INTSTUBS, PLATSTUBS, INTPLATSTUBS, INTXLIBSTUBS,
+  };
+
+  if (objc != 4) {
+    Tcl_WrongNumArgs(interp,1,objv,"library stubstable symbolnumber");
+    return TCL_ERROR;
+  }
+  if (Tcl_GetIndexFromObj(interp, objv[library_ix], library_names, "library", 0, &library) != TCL_OK) {
+    return TCL_ERROR;
+  }
+  if (Tcl_GetIndexFromObj(interp, objv[stubstable_ix], stubstable_names, "stubstable", 0, &stubstable) != TCL_OK) {
+    return TCL_ERROR;
+  }
+  if (Tcl_GetIntFromObj(interp, objv[symbol_ix], &symbolnumber) != TCL_OK || symbolnumber < 0) {
+    return TCL_ERROR;
+  }
+
+#if defined(LOOKUP_TK_STUBS)
+  if (library == LIB_TK) {
+    if (MyTkInitStubs(interp, "8.4", 0) == NULL) {
+      return TCL_ERROR;
+    }
+  }
+#endif
+  switch (stubstable) {
+    case STUBS:
+      stubs = (void**)(library == LIB_TCL ? tclStubsPtr : tkStubsPtr); break;
+    case INTSTUBS:
+      stubs = (void**)(library == LIB_TCL ? tclIntStubsPtr : tkIntStubsPtr); break;
+    case PLATSTUBS:
+      stubs = (void**)(library == LIB_TCL ? tclPlatStubsPtr : tkPlatStubsPtr); break;
+    case INTPLATSTUBS:
+      stubs = (void**)(library == LIB_TCL ? tclIntPlatStubsPtr : tkIntPlatStubsPtr); break;
+    case INTXLIBSTUBS:
+      stubs = (void**)(library == LIB_TCL ? NULL : tkIntXlibStubsPtr); break;
+  }
+
+  if (!stubs) {
+    Tcl_AppendResult(interp, "no stubs table \"", Tcl_GetString(objv[stubstable_ix]),
+        "\" in library \"", Tcl_GetString(objv[library_ix]), "\"", NULL);
+    return TCL_ERROR;
+  }
+  address = *(stubs + 2 + symbolnumber);
+  if (!address) {
+    Tcl_AppendResult(interp, "couldn't find symbol number ", Tcl_GetString(objv[symbol_ix]),
+        " in stubs table \"", Tcl_GetString(objv[stubstable_ix]), "\"", NULL);
+    return TCL_ERROR;
+  }
+
+  Tcl_SetObjResult(interp, Cinv_NewPointerObj(address,"SYMBOL"));
+  return TCL_OK;
+}
+
+/*
+ * One function exported for pointer punning with cinv::callout.
+ */
+void *cinv_pointer_pun(void *p) { return p; }
+void *cinv_copy_bytes(void *dst, void *src, size_t len) {
+  return memmove(dst, src, len);
+}
+
+/*
+ *--------------------------------------------------------------
+ *
+ * Cinv_Init
+ *
+ * Results:
+ *	None
+ *
+ * Side effects:
+ *	None
+ *
+ *--------------------------------------------------------------
+ */
+int Cinv_Init(Tcl_Interp *interp)
+{
+
+  /* initialize commands */
+  Tcl_CreateObjCommand(interp,"::cinv::stubsymbol", tcl_cinv_stubsymbol, NULL, NULL);
+
+  /* done */
+  return TCL_OK;
+}
+
+#if defined(LOOKUP_TK_STUBS)
+typedef struct MyTkStubHooks {
+    void *tkPlatStubs;
+    void *tkIntStubs;
+    void *tkIntPlatStubs;
+    void *tkIntXlibStubs;
+} MyTkStubHooks;
+
+typedef struct MyTkStubs {
+    int magic;
+    struct MyTkStubHooks *hooks;
+} MyTkStubs;
+
+/* private copy of Tk_InitStubs to avoid having to depend on Tk at build time */
+static const char *
+MyTkInitStubs(interp, version, exact)
+    Tcl_Interp *interp;
+    char *version;
+    int exact;
+{
+    const char *actualVersion;
+
+    actualVersion = Tcl_PkgRequireEx(interp, "Tk", version, exact,
+		(ClientData *) &tkStubsPtr);
+    if (!actualVersion) {
+	return NULL;
+    }
+
+    if (!tkStubsPtr) {
+	Tcl_SetResult(interp,
+		"This implementation of Tk does not support stubs",
+		TCL_STATIC);
+	return NULL;
+    }
+    
+    tkPlatStubsPtr =    ((MyTkStubs*)tkStubsPtr)->hooks->tkPlatStubs;
+    tkIntStubsPtr =     ((MyTkStubs*)tkStubsPtr)->hooks->tkIntStubs;
+    tkIntPlatStubsPtr = ((MyTkStubs*)tkStubsPtr)->hooks->tkIntPlatStubs;
+    tkIntXlibStubsPtr = ((MyTkStubs*)tkStubsPtr)->hooks->tkIntXlibStubs;
+    
+    return actualVersion;
+}
+#endif
 
 enum memmngr {
     MEM_TCL=0,
@@ -209,7 +289,7 @@ void cinv_free(void* ptr, int fromsystem) {
     return;
 }
 char *tcl_strdup(const char *src) {
-    char *dst = cinv_alloc(strlen (src) + 1,MEM_TCL,src,__LINE__);  // Space for length plus nul
+    char *dst = cinv_alloc(strlen (src) + 1,MEM_TCL,"tcl_strdup",__LINE__);  // Space for length plus nul
     if (dst == NULL) return NULL;          // No memory
     strcpy(dst, src);                      // Copy the characters
     return dst;                            // Return the new string
@@ -270,7 +350,6 @@ typedef enum _int__ {
 	__CINV_CC_STDCALL = 1, /**< The stdcall calling convention, the default convention for the Windows API. */
 	__CINV_CC_FASTCALL = 2 /**< Yet another, rarely used, Windows calling convention */
 } int__;
-
 
 
 void def_type(CInv_Type* strt, size_t _size, int _cinv_basetype,int _cinv_inttype,int _alignment,int _isSigned,int _isPtr,char* _typename) {
@@ -383,7 +462,7 @@ static void *entry_lookup(Tcl_HashTable *table, char *name)
   return entry ? Tcl_GetHashValue(entry) : NULL;
 }
 /* find an entry by it's hash value */
-static Tcl_HashEntry *entry_find(Tcl_HashTable *table, void *datum)
+/*static Tcl_HashEntry *entry_find(Tcl_HashTable *table, void *datum)
 {
   Tcl_HashSearch search;
   Tcl_HashEntry *entry = Tcl_FirstHashEntry(table, &search);
@@ -393,7 +472,7 @@ static Tcl_HashEntry *entry_find(Tcl_HashTable *table, void *datum)
     entry = Tcl_NextHashEntry(&search);
   }
   return NULL;
-}
+}*/
 /*
  * type management
  */
@@ -904,9 +983,6 @@ strt->typetag=tcl_strdup("");
 return strt;
 }
 
-int GetStructPtr(Tcl_Interp *interp, Tcl_Obj *obj, void* value) {
-    
-}
 int get_value_from_obj(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, Tcl_Obj *obj, PTR_TYPE* value, int* size) {
     char *pcv,*retpcv;
     unsigned char* upcv;
@@ -1005,13 +1081,13 @@ int get_value_from_obj(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, Tcl_O
             *(double*)value=(double)fd;
             return rv;
         case _CINV_T_PTR: 
-            rv=Ffidl_GetPointerFromObj(interp,obj,&tw,_typename);
+            rv=Cinv_GetPointerFromObj(interp,obj,&tw,_typename);
             *(PTR_TYPE*) value=(PTR_TYPE)tw;
             return rv;
         case _CINV_T_STRUCT: 
             // not implemenented
             //printf("Got struct ptr %s %s\n",_typename, Tcl_GetString(obj));
-            rv=Ffidl_GetPointerFromObj(interp,obj,&tw,_typename);
+            rv=Cinv_GetPointerFromObj(interp,obj,&tw,_typename);
             *(PTR_TYPE*) value=(PTR_TYPE)tw;
             return rv;
         case _CINV_T_PTR_BYTE:
@@ -1058,7 +1134,7 @@ int get_value_from_obj(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, Tcl_O
             return TCL_OK;            
         case _CINV_T_PTR_OBJ:
             //printf("Getting tclobj\n");
-            rv=Ffidl_GetPointerFromObj(interp,obj,&tw,_typename);
+            rv=Cinv_GetPointerFromObj(interp,obj,&tw,_typename);
             *(PTR_TYPE*) value=(PTR_TYPE)tw;
             return rv;
         case _CINV_T_PTR_UTF8:
@@ -1082,7 +1158,7 @@ int get_value_from_obj(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, Tcl_O
             return TCL_OK;
         case _CINV_T_PTR_PROC:
             // support for callbacks
-            rv=Ffidl_GetPointerFromObj(interp,obj,&tw,_typename);
+            rv=Cinv_GetPointerFromObj(interp,obj,&tw,_typename);
             *(PTR_TYPE*) value=(PTR_TYPE)tw;
             return rv;
         case _CINV_T_INTERP:
@@ -1184,11 +1260,11 @@ Tcl_Obj* set_obj_from_value(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, 
             
         case _CINV_T_PTR: 
             //printf("creating pointer of type %s %s\n",_typename,_typetag);
-            obj=Ffidl_NewPointerObj(*(void**)value,_typename);
+            obj=Cinv_NewPointerObj(*(void**)value,_typename);
             return obj;
             
         case _CINV_T_STRUCT: 
-            obj=Ffidl_NewPointerObj(*(void**)value,_typename);
+            obj=Cinv_NewPointerObj(*(void**)value,_typename);
             return obj;
         case _CINV_T_PTR_BYTE:
           obj= Tcl_NewByteArrayObj(*(unsigned char **)value, size); //XXX get a real value here!!!
@@ -1207,7 +1283,7 @@ Tcl_Obj* set_obj_from_value(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, 
           obj= Tcl_NewStringObj(*(char **)value, -1);
           return obj;
         case _CINV_T_INTERP:
-            obj=Ffidl_NewPointerObj(*(void**)value,_typename);
+            obj=Cinv_NewPointerObj(*(void**)value,_typename);
             return obj;
           
         default:
@@ -1494,7 +1570,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     return TCL_ERROR;
                 }
                 void* funcptr=Tcl_FindSymbol(interp, libhandle, symbol);
-                Tcl_Obj *sym_addr = Ffidl_NewPointerObj(funcptr,"SYMBOL");
+                Tcl_Obj *sym_addr = Cinv_NewPointerObj(funcptr,"SYMBOL");
                 Tcl_SetObjResult(interp, sym_addr);
                 return TCL_OK; 
             }
@@ -1618,7 +1694,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 PTR_TYPE* symadr=0;
                 void* funcptr=0;
                 //printf("Getting symbol adr\n");
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&symadr,"SYMBOL")==TCL_OK) {
+                if(Cinv_GetPointerFromObj(interp,objv[2],&symadr,"SYMBOL")==TCL_OK) {
                     if(symadr>0) {
                         // this is an adress it seems
                         funcptr=(PTR_TYPE*)symadr;
@@ -1698,7 +1774,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 
                 PTR_TYPE* symadr=0;
                 void* funcptr=0;
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&symadr,"SYMBOL")==TCL_OK) {
+                if(Cinv_GetPointerFromObj(interp,objv[2],&symadr,"SYMBOL")==TCL_OK) {
                     if(symadr>0) {
                         // this is an adress it seems
                         funcptr=(PTR_TYPE*)symadr;
@@ -2370,7 +2446,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 return TCL_OK; 
             }
         case CSTRUCT_GETPTR: 
-            obj=Ffidl_NewPointerObj(instance,structname);
+            obj=Cinv_NewPointerObj(instance,structname);
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
         case CSTRUCT_SETPTR: 
@@ -2391,7 +2467,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     }
                 }
                 Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&newinstance,structname)!=TCL_OK) return TCL_ERROR;
+                if(Cinv_GetPointerFromObj(interp,objv[2],&newinstance,structname)!=TCL_OK) return TCL_ERROR;
                 if(newinstance==NULL) {
                     Tcl_AppendResult(interp, "Couldn't load instance from ptr, PTR is NULL",NULL);
                     return TCL_ERROR;
@@ -2719,7 +2795,7 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             // get a pointer to ts->value
             // if its a basic type, this will result in a pointer to basic type (as int*)
             // if its already a pointer this results in double-pointer (char**)
-            obj=Ffidl_NewPointerObj(ts->value,ts->xtype->typename);
+            obj=Cinv_NewPointerObj(ts->value,ts->xtype->typename);
             if(obj==NULL) return TCL_ERROR;
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
@@ -2728,9 +2804,9 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             // else return normal pointer
             if(ts->cinv_type==_CINV_T_PTR) {
                 dest=*(char**)ts->value;
-                obj=Ffidl_NewPointerObj(dest,ts->xtype->typename);
+                obj=Cinv_NewPointerObj(dest,ts->xtype->typename);
             } else {
-                obj=Ffidl_NewPointerObj(ts->value,ts->xtype->typename);
+                obj=Cinv_NewPointerObj(ts->value,ts->xtype->typename);
             }
             if(obj==NULL) return TCL_ERROR;
             Tcl_SetObjResult(interp, obj);
@@ -2756,8 +2832,8 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                     }
                 }
                 PTR_TYPE* ptr=NULL;
-                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) {
+                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2])," matching type ",ts->xtype->typename,NULL);
+                if(Cinv_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) {
                     return TCL_ERROR;
                 }
                 if(ptr==NULL) {
@@ -3098,7 +3174,7 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             // get a pointer to ts->value
             // if its a basic type, this will result in a pointer to basic type (as int*)
             // if its already a pointer this results in double-pointer (char**)
-            obj=Ffidl_NewPointerObj(ts->value,"CDATA");
+            obj=Cinv_NewPointerObj(ts->value,"CDATA");
             if(obj==NULL) return TCL_ERROR;
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
@@ -3107,9 +3183,9 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
             // else return normal pointer
             if(ts->cinv_type==_CINV_T_PTR) {
                 dest=*(char**)ts->value;
-                obj=Ffidl_NewPointerObj(dest,"CDATA");
+                obj=Cinv_NewPointerObj(dest,"CDATA");
             } else {
-                obj=Ffidl_NewPointerObj(ts->value,"CDATA");
+                obj=Cinv_NewPointerObj(ts->value,"CDATA");
             }
             if(obj==NULL) return TCL_ERROR;
             Tcl_SetObjResult(interp, obj);
@@ -3135,7 +3211,7 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                     }
                 }
                 PTR_TYPE* ptr;
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
+                if(Cinv_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
                 //printf("Got pointer %p %s\n",ptr,ts->xtype->typename);
                 if(ptr==NULL) {
                     Tcl_AppendResult(interp, "Couldn't load instance from ptr",NULL);
@@ -3168,7 +3244,7 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                 //
                 PTR_TYPE* ptr,*retpcv;
                 int direction=0; // 0 in/ 1 out
-                if(Ffidl_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
+                if(Cinv_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
                 if(ptr==NULL) {
                     Tcl_AppendResult(interp, "Couldn't copy instance from NULL PTR",NULL);
                     return TCL_ERROR;
@@ -3395,7 +3471,7 @@ static int CCallbackHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, 
     
     switch (index) {
         case CCALLBACK_GETPTR:
-            obj=Ffidl_NewPointerObj(ts->entrypoint,"tclproc");
+            obj=Cinv_NewPointerObj(ts->entrypoint,"tclproc");
             Tcl_SetObjResult(interp, obj);
             return TCL_OK;
         case CCALLBACK_INFO:
@@ -3648,7 +3724,7 @@ int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
 	Tcl_CreateObjCommand(interp, "CCleanup", CCleanup, NULL,NULL);
 	Tcl_CreateObjCommand(interp, "PointerCast", CPointerCast, NULL,NULL);
 	
-	Ffidl_Init(interp);
+	Cinv_Init(interp);
 	
 	/* static  unsigned types */
     static CInv_Type cinv_type_uchar = init_type(sizeof(char), _CINV_T_CHAR, _CINV_T_CHAR, 0, 0, 0);

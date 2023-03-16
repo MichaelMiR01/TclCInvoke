@@ -14,5 +14,5 @@ del *.o
 del *.a
 
 %CC% %CPPFLAGS% -c cinvoke_tclcmd.c  %LIBS% 
-%CC%  -shared -s -o cinvoke_tclcmd.dll cinvoke_tclcmd.o -L. -lcinvoke  %LIBS%
+%CC%  -shared -s -o cinvoke_tclcmd.dll cinvoke_tclcmd.o -L. -l:libcinvoke.a  %LIBS%
 %CC%  -shared -s -o lib.dll lib.c

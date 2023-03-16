@@ -204,7 +204,6 @@ DLLEXPORT char* test17(char** instring) {
 
 DLLEXPORT int test18(withsubs* wsb) {
     //
-    int i;
     dbgprintf ("Test18: Size of withsubs: %lu\n", sizeof(withsubs));
     dbgprintf ("test18: struct i2  %d a %d\n", wsb->i2, wsb->a);
     dbgprintf ("test18: substruct a  %d b %d\n", wsb->sa, wsb->sb);
@@ -219,7 +218,6 @@ DLLEXPORT int test18(withsubs* wsb) {
 DLLEXPORT int test19(withdata* wsb) {
     dbgprintf ("Test19: Size of withdata: %lu\n", sizeof(withsubs));
     dbgprintf ("test19: size of data %dn", wsb->size);
-    char* data;
     char* dest=(char*)wsb->mydata;
     for (int i=0; i<wsb->size; i++) {
         *(dest+i)=(wsb->size-i)%255;
