@@ -1,6 +1,7 @@
 all:
 	cd lib && $(MAKE)
 	cd test && $(MAKE)
+	cd bindings/tcl && $(MAKE)
 	cp -f lib/arch/gcc_x64_unix.h lib/cinvoke-archspec.h
 
 install:
@@ -17,3 +18,4 @@ uninstall:
 clean:
 	cd lib && $(MAKE) clean
 	cd test && $(MAKE) clean
+	cd bindings/tcl && $(MAKE) clean
