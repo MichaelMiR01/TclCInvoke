@@ -16,7 +16,7 @@ $(TARGET): $(OBJS)
 
 $(DYNLIB): $(OBJS)
 	rm -f $(DYNLIB) 
-	[BUILDSTATIC] -static-libgcc -shared -s -o $(DYNLIB) $(OBJS) -ldl
+	[BUILDSHARED] -static-libgcc -shared -s -o $(DYNLIB) $(OBJS) -ldl
 	
 .c.o:
 	gcc [CFLAGS] -fPIC -c $< -o $@
