@@ -33,16 +33,16 @@ typedef int TclOk
 typedef ptr Tcl_Obj*
 typedef ptr Tcl_Interp*
 
-set Tcl_ListObjGetElements  [ffidl::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
+set Tcl_ListObjGetElements  [cinv::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
 ci function $Tcl_ListObjGetElements Tcl_ListObjGetElements TclOk {interp tclobj ptr.int tclobj}
 #int (*tcl_ListObjGetElements) (Tcl_Interp *interp, Tcl_Obj *listPtr, int *objcPtr, Tcl_Obj ***objvPtr); /* 45 */
-set Tcl_CreateObjCommand    [ffidl::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
+set Tcl_CreateObjCommand    [cinv::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
 ci function $Tcl_CreateObjCommand Tcl_CreateObjCommand ptr {interp string  tclproc clientdata ptr}
 #Tcl_Command (*tcl_CreateObjCommand) (Tcl_Interp *interp, const char *cmdName, Tcl_ObjCmdProc *proc, ClientData clientData, Tcl_CmdDeleteProc *deleteProc); /* 96 */
-set Tcl_GetString    [ffidl::stubsymbol tcl stubs 340]; #Tcl_GetString
+set Tcl_GetString    [cinv::stubsymbol tcl stubs 340]; #Tcl_GetString
 ci function $Tcl_GetString Tcl_GetString string ptr
 #    char * (*tcl_GetString) (Tcl_Obj *objPtr); /* 340 */
-ci function [ffidl::stubsymbol tcl stubs 129] Tcl_Eval TclOk {Tcl_Interp* string}
+ci function [cinv::stubsymbol tcl stubs 129] Tcl_Eval TclOk {Tcl_Interp* string}
 #/* 129 */ EXTERN int		Tcl_Eval(Tcl_Interp *interp, const char *script);
 
 ci function test_hellodata test_hellodata "" "string"

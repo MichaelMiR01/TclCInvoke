@@ -28,11 +28,11 @@ if {[info exists dllloaded]==0} {
     CInvoke ./lib[info sharedlibextension] ci
     set dllloaded 1 
 }
-set Tcl_ListObjGetElements  [ffidl::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
+set Tcl_ListObjGetElements  [cinv::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
 #int (*tcl_ListObjGetElements) (Tcl_Interp *interp, Tcl_Obj *listPtr, int *objcPtr, Tcl_Obj ***objvPtr); /* 45 */
-set Tcl_CreateObjCommand    [ffidl::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
+set Tcl_CreateObjCommand    [cinv::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
 #Tcl_Command (*tcl_CreateObjCommand) (Tcl_Interp *interp, const char *cmdName, Tcl_ObjCmdProc *proc, ClientData clientData, Tcl_CmdDeleteProc *deleteProc); /* 96 */
-set Tcl_GetString    [ffidl::stubsymbol tcl stubs 340]; #Tcl_GetString
+set Tcl_GetString    [cinv::stubsymbol tcl stubs 340]; #Tcl_GetString
 #    char * (*tcl_GetString) (Tcl_Obj *objPtr); /* 340 */
 ci function test14 test14 "int" "ptr.int"
 set hellodata [ci getadr hello_data]

@@ -153,28 +153,28 @@ typedef int TclOK
 
 # bind to tk
 #ffidl::callout ffidl-find-photo {pointer pointer-utf8} Tk_PhotoHandle 
-set Tk_FindPhoto [ffidl::stubsymbol tk stubs 64]; #Tk_FindPhoto
+set Tk_FindPhoto [cinv::stubsymbol tk stubs 64]; #Tk_FindPhoto
 ci function $Tk_FindPhoto Tk_FindPhoto ptr.pblockh {interp string}
 #ffidl::callout ffidl-photo-put-block {Tk_PhotoHandle pointer-byte int int int int} void 
-set Tk_PhotoPutBlock [ffidl::stubsymbol tk stubs 266]; #Tk_PhotoPutBlock
+set Tk_PhotoPutBlock [cinv::stubsymbol tk stubs 266]; #Tk_PhotoPutBlock
 ci function $Tk_PhotoPutBlock Tk_PhotoPutBlock "" {interp ptr.pblockh Tk_PhotoImageBlock int int int int}
 #ffidl::callout ffidl-photo-put-zoomed-block {Tk_PhotoHandle pointer-byte int int int int int int int int} void 
-set Tk_PhotoPutZoomedBlock [ffidl::stubsymbol tk stubs 267]; #Tk_PhotoPutZoomedBlock
+set Tk_PhotoPutZoomedBlock [cinv::stubsymbol tk stubs 267]; #Tk_PhotoPutZoomedBlock
 ci function $Tk_PhotoPutZoomedBlock Tk_PhotoPutZoomedBlock "" {interp ptr.pblockh Tk_PhotoImageBlock int int int int int int int int}
 #ffidl::callout ffidl-photo-get-image {Tk_PhotoHandle pointer-var} int 
-set Tk_PhotoGetImage    [ffidl::stubsymbol tk stubs 146]; #Tk_PhotoGetImage
+set Tk_PhotoGetImage    [cinv::stubsymbol tk stubs 146]; #Tk_PhotoGetImage
 ci function $Tk_PhotoGetImage Tk_PhotoGetImage TclOK {ptr.pblockh Tk_PhotoImageBlock}
 #ffidl::callout ffidl-photo-blank {Tk_PhotoHandle} void 
-set Tk_PhotoBlank    [ffidl::stubsymbol tk stubs 147]; #Tk_PhotoBlank
+set Tk_PhotoBlank    [cinv::stubsymbol tk stubs 147]; #Tk_PhotoBlank
 ci function $Tk_PhotoBlank Tk_PhotoBlank "" {ptr.pblockh}
 #ffidl::callout ffidl-photo-expand {Tk_PhotoHandle int int} void 
-set Tk_PhotoExpand    [ffidl::stubsymbol tk stubs 148]; #Tk_PhotoExpand
+set Tk_PhotoExpand    [cinv::stubsymbol tk stubs 148]; #Tk_PhotoExpand
 ci function $Tk_PhotoExpand Tk_PhotoExpand "" {interp ptr.pblockh int int}
 #ffidl::callout ffidl-photo-get-size {Tk_PhotoHandle pointer-var pointer-var} void 
-set Tk_PhotoGetSize    [ffidl::stubsymbol tk stubs 149]; #Tk_PhotoGetSize
+set Tk_PhotoGetSize    [cinv::stubsymbol tk stubs 149]; #Tk_PhotoGetSize
 ci function $Tk_PhotoGetSize Tk_PhotoGetSize "" {ptr.pblockh ptr.int ptr.int}
 #ffidl::callout ffidl-photo-set-size {Tk_PhotoHandle int int} void 
-set Tk_PhotoSetSize    [ffidl::stubsymbol tk stubs 150]; #Tk_PhotoSetSize
+set Tk_PhotoSetSize    [cinv::stubsymbol tk stubs 150]; #Tk_PhotoSetSize
 ci function $Tk_PhotoSetSize Tk_PhotoSetSize "" {ptr.pblockh int int}
 
 proc ffidl-photo-get-block-bytes {block} {
