@@ -2262,7 +2262,9 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		"setptr",
 		"getptr",
 		"info",
+		"size",
 		"struct",
+		"memcpy",
 		(char *) NULL
 	};
 	enum options {
@@ -2271,7 +2273,9 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		CSTRUCT_SETPTR,
 		CSTRUCT_GETPTR,
 		CSTRUCT_GETINFO,
+		CSTRUCT_GETSIZE,
 		CSTRUCT_GETDEF,
+		CSTRUCT_MEMCPY,
 	};
 	
 	ts = (TclCStructState *) cdata;
@@ -2489,9 +2493,52 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
             sprintf(buf,"Elements: %d\nBinary Size: %d\n",ts->deflen/2,ts->binsize);
             Tcl_AppendResult(interp,buf,Tcl_GetString(ts->deflist),NULL);
             return TCL_OK;
+        case CSTRUCT_GETSIZE:
+            obj=Tcl_NewIntObj(ts->binsize);
+            Tcl_SetObjResult(interp, obj);
+            return TCL_OK;
         case CSTRUCT_GETDEF:
             Tcl_AppendResult(interp,Tcl_GetString(ts->deflist),NULL);
             return TCL_OK;
+        case CSTRUCT_MEMCPY: 
+            if ((objc < 3) || (objc > 4)) {
+                Tcl_WrongNumArgs(interp, 2, objv, "ptr [direction in/out default in]");
+                return TCL_ERROR;
+            } else {
+                // usage 
+                // $cmd memcpy >> ptr
+                // $cmd memcpy << ptr
+                // $cmd memcpy ptr      is equiv to $cmd memcpy << ptr 
+                
+                PTR_TYPE* ptr,*retpcv;
+                int direction=0; // 0 in/ 1 out
+                if(Cinv_GetPointerFromObj(interp,objv[objc -1],&ptr,ts->typename)!=TCL_OK) return TCL_ERROR;
+                if(ptr==NULL) {
+                    Tcl_AppendResult(interp, "Couldn't copy instance from NULL PTR",NULL);
+                    return TCL_ERROR;
+                }
+                len=ts->binsize;
+                retpcv = ts->instance;  
+                if (retpcv == NULL) {
+                    Tcl_AppendResult(interp, "Couldn't copy instance internal NULL PTR",NULL);
+                    return TCL_ERROR;
+                    return TCL_ERROR;          // No memory
+                }
+                if(objc==4) {
+                    if(strcmp(Tcl_GetString(objv[2]),">>")==0) {
+                        direction=1;
+                    }
+                }
+                PTR_TYPE* from, *to;
+                
+                if(direction==0) {
+                    to=retpcv;from=ptr;
+                } else {
+                    from=retpcv;to=ptr;
+                }
+                memmove(to, from,len);                     // Copy the characters in
+                return TCL_OK;
+            }
         default:
             Tcl_AppendResult(interp,"internal error during option lookup",NULL);
             return TCL_ERROR;
@@ -3241,21 +3288,23 @@ static int CDATAHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                 Tcl_WrongNumArgs(interp, 2, objv, "ptr [direction in/out default in]");
                 return TCL_ERROR;
             } else {
-                //
+                // usage 
+                // $cmd memcpy >> ptr
+                // $cmd memcpy << ptr
+                // $cmd memcpy ptr      is equiv to $cmd memcpy << ptr 
+                
                 PTR_TYPE* ptr,*retpcv;
                 int direction=0; // 0 in/ 1 out
-                if(Cinv_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
+                if(Cinv_GetPointerFromObj(interp,objv[objc -1],&ptr,ts->xtype->typename)!=TCL_OK) return TCL_ERROR;
                 if(ptr==NULL) {
                     Tcl_AppendResult(interp, "Couldn't copy instance from NULL PTR",NULL);
                     return TCL_ERROR;
                 }
-                if((ts->deflen>0)&&(len>ts->deflen)) {
-                    len=ts->deflen;
-                }
+                len=ts->deflen;
                 retpcv = *(PTR_TYPE**)ts->value;  
                 if (retpcv == NULL) return TCL_ERROR;          // No memory
-                if(objc==3) {
-                    if(strcmp(Tcl_GetString(objv[3]),"out")==0) {
+                if(objc==4) {
+                    if(strcmp(Tcl_GetString(objv[2]),">>")==0) {
                         direction=1;
                     }
                 }

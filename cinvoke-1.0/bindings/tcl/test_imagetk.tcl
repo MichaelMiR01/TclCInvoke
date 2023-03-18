@@ -68,10 +68,10 @@ proc dump_struct {str {struct ""} {pad ""}} {
         set struct [$str struct]
     }
     foreach {key name} $struct {
-        set name [string map {( "" ) ""} $name]
+        set name [lindex [split $name (] 0]
         if {[lsearch "struct union" $key]>-1} {
             puts "$pad$key {"
-            dump_struct $str $name "$pad  "
+            dump_struct $str $name "$pad\t"
             puts "$pad}"
         } else {
             puts "${pad}$key\t\t$name: \t\t[$str get $name]"
@@ -181,7 +181,7 @@ proc ffidl-photo-get-block-bytes {block} {
     #puts "pixelPtr [$block get pixelPtr]"
     set nbytes [expr {[$block get height]*[$block get pitch]}]
     CDATA bytes $nbytes
-    bytes memcpy [$block get pixelPtr]
+    bytes memcpy << [$block get pixelPtr]
     CDATA bytes2 $nbytes
     bytes2 setptr [$block get pixelPtr] mem_none
     if {[bytes get] ne [bytes2 get]} {

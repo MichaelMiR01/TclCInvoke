@@ -130,6 +130,9 @@ typedef struct _simple {
 } simple;
 typedef struct withsubs {
     int i2;
+    int ooo[5];
+    char* strarr[5];
+    char* ostr;
     struct {
         int sa;
         int sb;
@@ -217,7 +220,7 @@ DLLEXPORT int test18(withsubs* wsb) {
 
 DLLEXPORT int test19(withdata* wsb) {
     dbgprintf ("Test19: Size of withdata: %lu\n", sizeof(withsubs));
-    dbgprintf ("test19: size of data %dn", wsb->size);
+    dbgprintf ("test19: size of data %d\n", wsb->size);
     char* dest=(char*)wsb->mydata;
     for (int i=0; i<wsb->size; i++) {
         *(dest+i)=(wsb->size-i)%255;

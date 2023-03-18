@@ -28,6 +28,7 @@ if {[info exists dllloaded]==0} {
     CInvoke ./lib[info sharedlibextension] ci
     set dllloaded 1 
 }
+
 set Tcl_ListObjGetElements  [cinv::stubsymbol tcl stubs 45]; #Tcl_ListObjGetElements
 #int (*tcl_ListObjGetElements) (Tcl_Interp *interp, Tcl_Obj *listPtr, int *objcPtr, Tcl_Obj ***objvPtr); /* 45 */
 set Tcl_CreateObjCommand    [cinv::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
@@ -49,6 +50,21 @@ rename test ""
 puts "Testing with pointer match (int -- int)"
 CType mytype int 123
 puts "Ptr of mytype: [mytype getptr]"
+set pp [mytype getptr]
+puts "unwrap pointer $pp"
+set pps [PointerUnwrap $pp]
+puts "Unwrap: $pps"
+puts "Wrap to test: [PointerWrap [PointerGetPtr $pp] test]"
+puts "Checking identity: "
+set p1 [PointerWrap [PointerGetPtr $pp] [PointerGetTag $pp]]
+if {$p1==$pp} {
+    set ok "OK"
+} else {
+    set ok "FAILED"
+}
+puts "Pointercheck $ok\n$p1\n$pp"
+
+
 mytype set 22
 puts [mytype get]
 puts [ci __call test14 "int" "ptr.int" [mytype getptr]]
@@ -82,6 +98,3 @@ if {[catch {
 } e ]} {
     puts "Error: $e"
 }
-
-
-CCleanup
