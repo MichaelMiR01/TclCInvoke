@@ -63,22 +63,6 @@ proc idata_set {img data} {
     }
 }
 
-proc dump_struct {str {struct ""} {pad ""}} {
-    if {$struct==""} {
-        set struct [$str struct]
-    }
-    foreach {key name} $struct {
-        set name [lindex [split $name (] 0]
-        if {[lsearch "struct union" $key]>-1} {
-            puts "$pad$key {"
-            dump_struct $str $name "$pad\t"
-            puts "$pad}"
-        } else {
-            puts "${pad}$key\t\t$name: \t\t[$str get $name]"
-        }
-    }
-}
-
 package require Tk
 
 #toplevel .iv
