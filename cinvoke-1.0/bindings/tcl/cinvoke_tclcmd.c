@@ -2502,7 +2502,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
             return TCL_OK;
         case CSTRUCT_MEMCPY: 
             if ((objc < 3) || (objc > 4)) {
-                Tcl_WrongNumArgs(interp, 2, objv, "ptr [direction in/out default in]");
+                Tcl_WrongNumArgs(interp, 2, objv, "<< (or >>) ptr");
                 return TCL_ERROR;
             } else {
                 // usage 
