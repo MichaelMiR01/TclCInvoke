@@ -30,6 +30,19 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdio.h>
 
+void cinv_debug_hash(struct hashtable *ht) {
+    struct hashtable_itr it; 
+    char *submembername;
+    CInvStructMember *submember;
+    hashtable_iterator(ht, &it);
+
+    do {
+        submembername= hashtable_iterator_key(&it);
+        submember= hashtable_iterator_value(&it);
+        //printf("submembername %s submember->offset %d, submember->nextoffset %d\n",submembername,submember->offset,submember->nextoffset);
+    } while (hashtable_iterator_advance(&it));
+}
+
 CInvStructure *cinv_structure_create(CInvContext *context) {
 	CInvStructure *st = malloc(sizeof(CInvStructure));
 	if (!st) {
@@ -44,6 +57,7 @@ CInvStructure *cinv_structure_create(CInvContext *context) {
 		return NULL;
 	}
 	st->nextoffset = 0;
+	st->lastoffset = 0;
 	st->finished = 0;
 	st->alignment = 1;
 
@@ -198,7 +212,6 @@ cinv_status_t cinv_structure_addmember_union(CInvContext *context,
 	if (hashtable_count(structure->members))
 		align = ARCH_CLAMP_NONFIRST_STRUCTALIGN;
 #endif
-    //structure->lastoffset=structure->nextoffset;
 
 	if ((structure->nextoffset % align) != 0)
 		structure->nextoffset += align - (structure->nextoffset % align);
@@ -215,7 +228,7 @@ cinv_status_t cinv_structure_addmember_union(CInvContext *context,
 		structure->alignment = align;
 	if(sz>(structure->nextoffset-structure->lastoffset)) 	structure->nextoffset = structure->lastoffset+sz;
 	member->nextoffset=structure->nextoffset-structure->lastoffset;
-	/*printf("Member %s off %d sz %d next %d : struct last %d next %d\n",
+	/*printf("Member union %s off %d sz %d next %d : struct last %d next %d\n",
 	        name,member->offset,sz,member->nextoffset,
 	        structure->lastoffset,structure->nextoffset);*/
 	
@@ -306,7 +319,6 @@ cinv_status_t cinv_structure_insert_struct(CInvContext *context,
 		structure->nextoffset += align - (structure->nextoffset % align);
 
 	/* resolve struct and insert here */
-	//hashtable_insert(structure->members, namecopy, member);
 	
 		struct hashtable_itr it; 
 		char *submembername;
@@ -336,10 +348,6 @@ cinv_status_t cinv_structure_insert_struct(CInvContext *context,
 	structure->nextoffset += type->nextoffset;
 	structure->lastoffset=structure->nextoffset;
 	
-	// not freeing up will leak memory
-	// but freeing up here will destroy the struct
-	// so no way to get the size or anything back
-    //cinv_structure_delete(context,type);
     hashtable_destroy(type->members,0);
     free(type);
 	context_clear_error(context);
@@ -372,7 +380,6 @@ cinv_status_t cinv_structure_insert_union_struct(CInvContext *context,
 		structure->nextoffset += align - (structure->nextoffset % align);
 
 	/* resolve struct and insert here */
-	//hashtable_insert(structure->members, namecopy, member);
 	
 		struct hashtable_itr it; 
 		char *submembername;
@@ -394,23 +401,15 @@ cinv_status_t cinv_structure_insert_union_struct(CInvContext *context,
 			hashtable_insert(structure->members, submembername, submember);
 		} while (hashtable_iterator_advance(&it));
 	
-	/* instead of inserting strcut as new member */
+	/* instead of inserting struct as new member */
 	
 	if (align > structure->alignment)
 		structure->alignment = align;
 
-	//structure->nextoffset += type->nextoffset;
 	if(sz>(structure->nextoffset-structure->lastoffset)) 	structure->nextoffset = structure->lastoffset+sz;
-	/*printf("Struct %s off %d sz %d next %d : struct last %d next %d\n",
+	/*printf("Union %s off %d sz %d next %d : struct last %d next %d\n",
 	        name,0,sz,type->nextoffset,
 	        structure->lastoffset,structure->nextoffset);*/
-	//member->nextoffset=structure->nextoffset-structure->lastoffset;
-	//structure->lastoffset=structure->nextoffset;
-	
-	// not freeing up will leak memory
-	// but freeing up here will destroy the struct
-	// so no way to get the size or anything back
-    //cinv_structure_delete(context,type);
     hashtable_destroy(type->members,0);
     free(type);
 	
@@ -432,6 +431,7 @@ cinv_status_t cinv_structure_finish(CInvContext *context,
 	}
 	
 	structure->finished = 1;
+	structure->lastoffset=structure->nextoffset;
 	context_clear_error(context);
 	return CINV_SUCCESS;
 }

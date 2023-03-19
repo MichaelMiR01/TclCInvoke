@@ -111,6 +111,9 @@ set ptr_cs [cs2 getptr]
 puts "ptr to cs2: $ptr_cs"
 
 puts [ci __call test18 "int" "ptr" $::ptr_cs]
+
+
+
 puts "Get s.a [cs2 get s.a ]"
 puts "Get s.b [cs2 get s.b ]"
 
@@ -143,7 +146,6 @@ puts "cs->ill [cs get ill]"
 
 puts "cs->float [cs get tf]"
 puts "cs->double [cs get td]"
-
 puts "testing memcpy of struct "
 
 CType cs2b cs2
