@@ -35,11 +35,11 @@ void cinv_debug_hash(struct hashtable *ht) {
     char *submembername;
     CInvStructMember *submember;
     hashtable_iterator(ht, &it);
-
+    printf("#----------------\n");
     do {
         submembername= hashtable_iterator_key(&it);
         submember= hashtable_iterator_value(&it);
-        //printf("submembername %s submember->offset %d, submember->nextoffset %d\n",submembername,submember->offset,submember->nextoffset);
+        printf("submembername %s submember->offset %d, submember->nextoffset %d\n",submembername,submember->offset,submember->nextoffset);
     } while (hashtable_iterator_advance(&it));
 }
 

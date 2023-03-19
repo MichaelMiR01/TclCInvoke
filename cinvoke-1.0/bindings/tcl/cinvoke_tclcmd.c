@@ -2039,6 +2039,7 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
     int sublength;
 	int maxoffset=0;
 	tstruct= outstruct;
+	tstruct->nextoffset=tstruct->lastoffset;
 	if ((llength%2>0)||(llength==0)) {
 	    Tcl_AppendResult(interp, "Definition of union is not a valid list\n",NULL);
 	    return TCL_ERROR;
@@ -2057,6 +2058,7 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
             // create name for substuct
             sprintf(substrname,"struct%d",i);
             int align=substruct->alignment;
+            if(align>tstruct->alignment) tstruct->alignment=align;
             if ((tstruct->lastoffset % align) != 0)
                 tstruct->lastoffset += align - (tstruct->lastoffset % align);
             tstruct->nextoffset=tstruct->lastoffset;
@@ -2074,8 +2076,20 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
             if (Tcl_ListObjGetElements(interp, deflist[i+1], &sublength, &sublist)!=TCL_OK) {
                 return TCL_ERROR;
             }
-            if(CreateUnion(interp, ts,sublist,sublength, tstruct)!=TCL_OK) {
+            substruct=cinv_structure_create(ctx);
+            if(CreateUnion(interp, ts,sublist,sublength, substruct)!=TCL_OK) {
                 Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
+                return TCL_ERROR;
+            }
+            cinv_structure_finish(ctx, substruct);
+            sprintf(substrname,"struct%d",i);
+            int align=substruct->alignment;
+            if(align>tstruct->alignment) tstruct->alignment=align;
+            if ((tstruct->lastoffset % align) != 0)
+                tstruct->lastoffset += align - (tstruct->lastoffset % align);
+            tstruct->nextoffset=tstruct->lastoffset;
+            if(cinv_structure_insert_union_struct(ctx, tstruct, substrname, substruct)==CINV_ERROR) {
+                Tcl_AppendResult(interp,"Error creating substruct ",elem,"\n",cinv_context_geterrormsg(ctx),NULL);
                 return TCL_ERROR;
             }
             maxoffset=max(maxoffset,tstruct->nextoffset-tstruct->lastoffset);
@@ -2159,8 +2173,20 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
             if (Tcl_ListObjGetElements(interp, deflist[i+1], &sublength, &sublist)!=TCL_OK) {
                 return TCL_ERROR;
             }
-            if(CreateUnion(interp, ts,sublist,sublength, tstruct)!=TCL_OK) {
+            substruct=cinv_structure_create(ctx);
+            if(CreateUnion(interp, ts,sublist,sublength, substruct)!=TCL_OK) {
                 Tcl_AppendResult(interp,"Error creating union from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
+                return TCL_ERROR;
+            }
+            cinv_structure_finish(ctx, substruct);
+            sprintf(substrname,"struct%d",i);
+            int align=substruct->alignment;
+            if(align>tstruct->alignment) tstruct->alignment=align;
+            if ((tstruct->lastoffset % align) != 0)
+                tstruct->lastoffset += align - (tstruct->lastoffset % align);
+            tstruct->nextoffset=tstruct->lastoffset;
+            if(cinv_structure_insert_union_struct(ctx, tstruct, substrname, substruct)==CINV_ERROR) {
+                Tcl_AppendResult(interp,"Error creating substruct ",elem,"\n",cinv_context_geterrormsg(ctx),NULL);
                 return TCL_ERROR;
             }
             maxoffset=max(maxoffset,tstruct->nextoffset-tstruct->lastoffset);
@@ -2593,7 +2619,8 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	    Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(objv[2]),"\n",NULL);
 	    return TCL_ERROR;
 	}
-	
+    //cinv_debug_hash(tstruct->members);
+
     ts->cstruct = tstruct;
 	ts->instance=cinv_structure_create_instance(ctx, tstruct);
 	cinv_structure_getsize(ctx, tstruct,&ts->binsize);
