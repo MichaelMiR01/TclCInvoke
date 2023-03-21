@@ -1861,6 +1861,59 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	return TCL_OK;
 }
 
+static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name, Tcl_Obj* result) {
+    // preparse structs to get substructs implemented properly
+	char *elem;
+	Tcl_Obj* elemo;
+    Tcl_Obj **deflist;
+    int llength;
+    char substrname[256];
+    char substrelem[256];
+    if (Tcl_ListObjGetElements(interp, defstring, &llength, &deflist)!=TCL_OK) {
+        return TCL_ERROR;
+    }
+
+	if ((llength%2>0)||(llength==0)) {
+	    Tcl_AppendResult(interp, "Definition of struct is not a valid list\n",NULL);
+	    return TCL_ERROR;
+	}
+	if(result==NULL) {
+	    Tcl_AppendResult(interp, "Nedd valid target listobj\n",NULL);
+	    return TCL_ERROR;
+    }
+	for (int i=0;i<llength;i+=2) {
+        elem=Tcl_GetString(deflist[i+1]);
+        elemo= deflist[i+1];
+        // lookup other structs
+        TclCStructDef *entry=entry_lookup(&cinvclient->structs,Tcl_GetString(deflist[i]));
+        if(entry!=NULL) {
+            elemo=entry->definition;
+            sprintf(substrname,"%s",elem);
+            //printf("parsing substruct %s.%s\n",substrname,Tcl_GetString(elemo));
+            if(ParseStruct(interp, elemo, substrname, result)!=TCL_OK) {
+                return TCL_ERROR;
+            }
+        } else {
+            if(strlen(name)>0) {
+                sprintf(substrelem,"%s.%s",name,elem);
+            } else {
+               sprintf(substrelem,"%s",elem);
+            }
+            //printf("appending %s %s",Tcl_GetString(deflist[i]),substrelem);
+            if(Tcl_ListObjAppendElement(interp, result, Tcl_DuplicateObj(deflist[i]))) {
+                Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
+                return TCL_ERROR;
+            }
+            elemo=Tcl_NewStringObj(substrelem,-1);
+            if(Tcl_ListObjAppendElement(interp, result, elemo)) {
+                Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
+                return TCL_ERROR;
+            }
+        }
+    }
+    return TCL_OK;
+}
+
 static int DeleteStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflist, int llength, CInvStructure *tstruct);
 static int DeleteUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflist, int llength, CInvStructure *outstruct) {
     //
@@ -2137,6 +2190,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
 	CInvContext *ctx=ts->ctx;
 	CInvStructure *tstruct= cinv_structure_create(ctx);
 	char *elem;
+	Tcl_Obj* elemo;
 	char substrname[128];
     CInvStructure *substruct;
     Tcl_Obj **sublist;
@@ -2149,18 +2203,18 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
 
 	for (int i=0;i<llength;i+=2) {
         elem=Tcl_GetString(deflist[i+1]);
+        elemo= deflist[i+1];
         int itype=-1;
-        
+        substrname[0]='\0';
+
         if(strcmp(Tcl_GetString(deflist[i]),"struct")==0) {
-            if (Tcl_ListObjGetElements(interp, deflist[i+1], &sublength, &sublist)!=TCL_OK) {
+            if (Tcl_ListObjGetElements(interp, elemo, &sublength, &sublist)!=TCL_OK) {
                 return TCL_ERROR;
             }
             if(CreateStruct(interp, ts,sublist,sublength, &substruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(elemo),"\n",NULL);
                 return TCL_ERROR;
             }
-            // create name for substuct
-            sprintf(substrname,"struct%d",i);
             if(cinv_structure_insert_struct(ctx, tstruct, substrname, substruct)==CINV_ERROR) {
                 Tcl_AppendResult(interp,"Error creating substruct ",elem,"\n",cinv_context_geterrormsg(ctx),NULL);
                 return TCL_ERROR;
@@ -2651,6 +2705,14 @@ static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	//printf("Declaring struct %s\n",Tcl_GetString(objv[1]));
 	ts->structname=objv[1];
 	ts->definition=objv[2];
+    Tcl_Obj* newdef=Tcl_NewListObj(0,NULL);;
+    if(ParseStruct(interp, ts->definition, "", newdef)!=TCL_OK) {
+        return TCL_ERROR;
+    }
+    if(newdef!=NULL) {
+        //printf("New struct %s\n",Tcl_GetString(newdef));
+        ts->definition=newdef;
+    }
 	Tcl_IncrRefCount(ts->structname);
     Tcl_IncrRefCount(ts->definition);
     Tcl_HashEntry *entry = Tcl_FindHashEntry(&cinvclient->structs,Tcl_GetString(objv[1]));

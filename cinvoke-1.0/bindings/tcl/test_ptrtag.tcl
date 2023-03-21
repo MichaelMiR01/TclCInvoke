@@ -54,9 +54,9 @@ set pp [mytype getptr]
 puts "unwrap pointer $pp"
 set pps [PointerUnwrap $pp]
 puts "Unwrap: $pps"
-puts "Wrap to test: [PointerWrap [PointerGetPtr $pp] test]"
+puts "Wrap to test: [PointerWrap [PointerPtr $pp] test]"
 puts "Checking identity: "
-set p1 [PointerWrap [PointerGetPtr $pp] [PointerGetTag $pp]]
+set p1 [PointerWrap [PointerPtr $pp] [PointerTag $pp]]
 if {$p1==$pp} {
     set ok "OK"
 } else {
