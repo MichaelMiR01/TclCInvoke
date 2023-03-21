@@ -1867,8 +1867,8 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
 	Tcl_Obj* elemo;
     Tcl_Obj **deflist;
     int llength;
-    char substrname[256];
-    char substrelem[256];
+    char substrname[128000];
+    char substrelem[128000];
     if (Tcl_ListObjGetElements(interp, defstring, &llength, &deflist)!=TCL_OK) {
         return TCL_ERROR;
     }
