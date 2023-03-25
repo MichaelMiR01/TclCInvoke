@@ -1863,10 +1863,11 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name, Tcl_Obj* result, int depth) {
     // preparse structs to get substructs implemented properly
 	char *elem,*type;
-	Tcl_Obj* elemo, *obj;
+	Tcl_Obj *obj;
     Tcl_Obj **deflist;
     int llength;
-    static char substrname[1024];
+    TclCStructDef *entry;
+    char *substrname;
     char *substrelem;
     
     if(depth>32) {
@@ -1888,27 +1889,30 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
 	    return TCL_ERROR;
     }
 	for (int i=0;i<llength;i+=2) {
+        type=Tcl_GetString(deflist[i]);
         elem=Tcl_GetString(deflist[i+1]);
         substrelem=cinv_alloc(strlen(elem)+strlen(name)+16,MEM_TCL, "ParseStruct",__LINE__);
-        type=Tcl_GetString(deflist[i]);
-        elemo= deflist[i+1];
+        substrname=cinv_alloc(strlen(type)+strlen(elem)+strlen(name)+16,MEM_TCL, "ParseStruct",__LINE__);
         // lookup other structs
-        TclCStructDef *entry=entry_lookup(&cinvclient->structs,Tcl_GetString(deflist[i]));
+        if(elem[0]!='*') {
+            entry=entry_lookup(&cinvclient->structs,Tcl_GetString(deflist[i]));
+        } else {
+            entry=NULL;
+        }
         if(entry!=NULL) {
-            elemo=entry->definition;
             if(strlen(name)>0) {
                 sprintf(substrname,"%s.%s",name,elem);
             } else {
                 sprintf(substrname,"%s",elem);
             }
-            //printf("parsing substruct %s.%s\n",substrname,Tcl_GetString(elemo));
+            //printf("parsing substruct %s.%s\n",substrname,Tcl_GetString(entry->definition));
             // Tcl_NewList
             obj= Tcl_NewListObj(0,NULL);
             if(Tcl_ListObjAppendElement(interp, result, Tcl_NewStringObj("struct",-1))) {
                 Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                 return TCL_ERROR;
             }
-            if(ParseStruct(interp, elemo, substrname, obj, depth+1)!=TCL_OK) {
+            if(ParseStruct(interp, entry->definition, substrname, obj, depth+1)!=TCL_OK) {
                 return TCL_ERROR;
             }
             if(Tcl_ListObjAppendElement(interp, result, obj)) {
@@ -1917,14 +1921,14 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
             }
         } else {
             if ((strcmp(type,"struct")==0)||(strcmp(type,"union")==0)) {
-                //printf("parsing direct %s\n",elem,Tcl_GetString(elemo));
+                //printf("parsing direct %s\n",elem,Tcl_GetString(deflist[i+1]));
                 // Tcl_NewList
                 obj= Tcl_NewListObj(0,NULL);
                 if(Tcl_ListObjAppendElement(interp, result, Tcl_NewStringObj(type,-1))) {
                     Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                     return TCL_ERROR;
                 }
-                if(ParseStruct(interp, elemo, name, obj, depth+1)!=TCL_OK) {
+                if(ParseStruct(interp, deflist[i+1], name, obj, depth+1)!=TCL_OK) {
                     return TCL_ERROR;
                 }
                 if(Tcl_ListObjAppendElement(interp, result, obj)) {
@@ -1932,24 +1936,30 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
                     return TCL_ERROR;
                 }
             } else {
+                if(elem[0]=='*') {
+                    removeChar(elem, '*');
+                    sprintf(substrname,"ptr.%s",type);
+                } else {
+                    sprintf(substrname,"%s",type);
+                }
                 if(strlen(name)>0) {
                     sprintf(substrelem,"%s.%s",name,elem);
                 } else {
                    sprintf(substrelem,"%s",elem);
                 }
-                //printf("appending %s %s\n",Tcl_GetString(deflist[i]),substrelem);
-                if(Tcl_ListObjAppendElement(interp, result, Tcl_DuplicateObj(deflist[i]))) {
+                //printf("appending %s %s\n",substrname,substrelem);
+                if(Tcl_ListObjAppendElement(interp, result, Tcl_NewStringObj(substrname,-1))) {
                     Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                     return TCL_ERROR;
                 }
-                elemo=Tcl_NewStringObj(substrelem,-1);
-                if(Tcl_ListObjAppendElement(interp, result, elemo)) {
+                if(Tcl_ListObjAppendElement(interp, result, Tcl_NewStringObj(substrelem,-1))) {
                     Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                     return TCL_ERROR;
                 }
             }
         }
         cinv_free(substrelem, MEM_TCL);
+        cinv_free(substrname, MEM_TCL);
     }
     return TCL_OK;
 }
@@ -2230,7 +2240,6 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
 	CInvContext *ctx=ts->ctx;
 	CInvStructure *tstruct= cinv_structure_create(ctx);
 	char *elem;
-	Tcl_Obj* elemo;
 	char substrname[128];
     CInvStructure *substruct;
     Tcl_Obj **sublist;
@@ -2243,16 +2252,15 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
 
 	for (int i=0;i<llength;i+=2) {
         elem=Tcl_GetString(deflist[i+1]);
-        elemo= deflist[i+1];
         int itype=-1;
         substrname[0]='\0';
 
         if(strcmp(Tcl_GetString(deflist[i]),"struct")==0) {
-            if (Tcl_ListObjGetElements(interp, elemo, &sublength, &sublist)!=TCL_OK) {
+            if (Tcl_ListObjGetElements(interp, deflist[i+1], &sublength, &sublist)!=TCL_OK) {
                 return TCL_ERROR;
             }
             if(CreateStruct(interp, ts,sublist,sublength, &substruct)!=TCL_OK) {
-                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(elemo),"\n",NULL);
+                Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(deflist[i+1]),"\n",NULL);
                 return TCL_ERROR;
             }
             if(cinv_structure_insert_struct(ctx, tstruct, substrname, substruct)==CINV_ERROR) {
@@ -2297,6 +2305,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
         }
         int isPtr=0;
         if(elem[0]=='*') {
+            printf("ptrizing %s\n",elem);
             isPtr=1;
             removeChar(elem, '*');
         }
@@ -2318,7 +2327,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
         }
         cinv_free(realname,MEM_SYSTEM);
 	}
-	//cinv_debug_hash(tstruct->members);
+	//printf ("%s",cinv_debug_hash(tstruct->members);
 	cinv_structure_finish(ctx, tstruct);
 	*outstruct=tstruct;
 	return TCL_OK;
@@ -2385,6 +2394,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	CInvStructure *tstruct;
 	void* instance;
 	PTR_TYPE *newinstance;
+	char* s;
 	
 	static CONST char *options[] = {
 		"set",
@@ -2395,6 +2405,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		"size",
 		"struct",
 		"memcpy",
+		"debug",
 		(char *) NULL
 	};
 	enum options {
@@ -2406,6 +2417,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 		CSTRUCT_GETSIZE,
 		CSTRUCT_GETDEF,
 		CSTRUCT_MEMCPY,
+		CSTRUCT_DEBUG,
 	};
 	
 	ts = (TclCStructState *) cdata;
@@ -2454,7 +2466,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     return TCL_ERROR;
                 }
                 
-                //printf("setting value to %s %p\n","",&xtype);
+                //printf("setting value to %s %p %d\n",Tcl_GetString(key),&xtype,xtype->cinv_inttype);
                 itype=xtype->cinv_inttype;
                 val=cinv_alloc(get_size_from_type(itype),MEM_TCL,"CStructHandleCmd",__LINE__);
                 name=Tcl_GetString(objv[2]);
@@ -2600,7 +2612,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                         ts->allocsystem=-1;
                     }
                 }
-                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2]),NULL);
+                Tcl_AppendResult(interp,"setting ptr to ",Tcl_GetString(objv[2]),NULL);
                 if(Cinv_GetPointerFromObj(interp,objv[2],&newinstance,structname)!=TCL_OK) return TCL_ERROR;
                 if(newinstance==NULL) {
                     Tcl_AppendResult(interp, "Couldn't load instance from ptr, PTR is NULL",NULL);
@@ -2669,6 +2681,11 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 memmove(to, from,len);                     // Copy the characters in
                 return TCL_OK;
             }
+        case CSTRUCT_DEBUG: 
+            s=cinv_debug_hash(tstruct->members);
+            Tcl_AppendResult(interp,s,NULL);
+            free(s);
+            return TCL_OK;
         default:
             Tcl_AppendResult(interp,"internal error during option lookup",NULL);
             return TCL_ERROR;
@@ -2702,6 +2719,7 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	    return TCL_ERROR;
 	}
 	//printf("Got definition length %d\n",llength);
+	Tcl_GetString(objv[3]);
 	ts->typename=tcl_strdup(Tcl_GetString(objv[2]));
 	ts->deflist=Tcl_DuplicateObj(objv[3]);
 	ts->deflen=llength;
@@ -2713,7 +2731,7 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	    Tcl_AppendResult(interp,"Error creating struct from ",Tcl_GetString(objv[2]),"\n",NULL);
 	    return TCL_ERROR;
 	}
-    //cinv_debug_hash(tstruct->members);
+    //printf ("%s",cinv_debug_hash(tstruct->members);
 
     ts->cstruct = tstruct;
 	ts->instance=cinv_structure_create_instance(ctx, tstruct);

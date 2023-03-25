@@ -298,7 +298,7 @@ CINVOKE_EXPORT cinv_status_t cinv_function_delete(CInvContext *context,
 
 
 
-CINVOKE_EXPORT void cinv_debug_hash(struct hashtable *ht);
+CINVOKE_EXPORT char* cinv_debug_hash(struct hashtable *ht);
 /** Creates a new structure description.
 * \param[in] context A C/Invoke context.
 * \return A new structure description object, or NULL if an error occurred.

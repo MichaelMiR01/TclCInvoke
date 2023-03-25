@@ -30,17 +30,31 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdio.h>
 
-void cinv_debug_hash(struct hashtable *ht) {
+char* cinv_debug_hash(struct hashtable *ht) {
     struct hashtable_itr it; 
     char *submembername;
+    char str[256];
     CInvStructMember *submember;
-    hashtable_iterator(ht, &it);
-    printf("#----------------\n");
-    do {
-        submembername= hashtable_iterator_key(&it);
-        submember= hashtable_iterator_value(&it);
-        printf("submembername %s submember->offset %d, submember->nextoffset %d\n",submembername,submember->offset,submember->nextoffset);
-    } while (hashtable_iterator_advance(&it));
+
+    size_t n=0;
+    n=ht->tablelength*256;
+    char *s = malloc( n + 1 );
+
+    if ( s != NULL )
+    {
+        s[0] = '\0';
+
+        hashtable_iterator(ht, &it);
+        do {
+            submembername= hashtable_iterator_key(&it);
+            submember= hashtable_iterator_value(&it);
+            // sprintf this
+            snprintf(str,255,"%s: offset %d, type %d next %d\n",submembername,submember->offset,submember->type,submember->nextoffset);
+            strcat( s, str );
+        } while (hashtable_iterator_advance(&it));
+        return s;
+    }
+    return NULL;
 }
 
 CInvStructure *cinv_structure_create(CInvContext *context) {
@@ -336,7 +350,7 @@ cinv_status_t cinv_structure_insert_struct(CInvContext *context,
             }
 			
 			submember->offset+=structure->nextoffset;
-			submember->nextoffset+=structure->nextoffset;
+			//submember->nextoffset+=structure->nextoffset;
 			hashtable_insert(structure->members, submembername, submember);
 		} while (hashtable_iterator_advance(&it));
 	
