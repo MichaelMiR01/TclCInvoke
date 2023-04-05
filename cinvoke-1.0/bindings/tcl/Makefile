@@ -5,16 +5,16 @@ WIN32=
 CC=gcc
 
 LIBS=-L../../lib -Llib
-CPPFLAGS=-Wall -DNOMEMDEBUG -O2 -shared -s -D_GNU_SOURCE -DHAVE_TCL_H -DUSE_TCL_STUBS -I../../lib
+CPPFLAGS=-Wall -DMEMDEBUG -O2 -shared -s -D_GNU_SOURCE -DHAVE_TCL_H -DUSE_TCL_STUBS -I../../lib
 
 XCC=i686-w64-mingw32-gcc 
-XCPPFLAGS=-m32 $(CPPFLAGS) -D__USE_MINGW_ANSI_STDIO
+XCPPFLAGS=-m32 $(CPPFLAGS) 
 XINC=-Igeneric -Igeneric/win
-
+#-D__USE_MINGW_ANSI_STDIO
 all: $(TARGET)
 
 clean:
-	rm -f *.o *.so *.dll
+	rm -f *.o 
 
 SRCS = cinvoke_tclcmd.c lib.c
 

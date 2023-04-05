@@ -860,7 +860,7 @@ int get_type_from_str(Tcl_Interp *interp, Tcl_Obj *strin, int *type, CInv_Type**
         Tcl_ResetResult(interp);
         CInv_Type* ixtype=type_lookup(cinvclient,str1);
         if(ixtype==NULL) {
-            Tcl_AppendResult(interp, "...Type not found ",Tcl_GetString(str)," ",tag,NULL);
+            Tcl_AppendResult(interp, "Type not found ",Tcl_GetString(str)," ",tag,NULL);
             cinv_free(str1,MEM_TCL);
             return TCL_ERROR;
         }
@@ -3036,7 +3036,7 @@ static int CTypeHandleCmd ( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_
                     }
                 }
                 PTR_TYPE* ptr=NULL;
-                Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2])," matching type ",ts->xtype->typename,NULL);
+                //Tcl_AppendResult(interp,"getting ptr from ",Tcl_GetString(objv[2])," matching type ",ts->xtype->typename,"\n",NULL);
                 if(Cinv_GetPointerFromObj(interp,objv[2],&ptr,ts->xtype->typename)!=TCL_OK) {
                     return TCL_ERROR;
                 }
