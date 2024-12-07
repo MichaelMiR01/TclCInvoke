@@ -79,6 +79,9 @@ typedef enum _cinv_callconv_t {
 #ifdef ARCH_GCC_X86_WIN
 #include "arch/gcc_x86_win.h"
 #endif
+#ifdef ARCH_TCC_X86_WIN
+#include "arch/tcc_x86_win.h"
+#endif
 #ifdef ARCH_GCC_PPC_OSX
 #include "arch/gcc_ppc_osx.h"
 #endif
