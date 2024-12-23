@@ -1,71 +1,79 @@
-# TclCInvoke
-A foreign funtion interface for TCL, based on CInvoke (an old codebase from https://www.nongnu.org/cinvoke/)
+I played around with CInvoke, a very old implementation of a basic Foreign Funtion Interface from https://www.nongnu.org/cinvoke/
+Finally, after adapting the code base of CInvoke a bit and implementing a basic TCL library, I came up with a proof of concept.
+I know, that there are two much more elaborate libs, ffidl and cffi, wich take care of ffi under TCL, so there actually is no need for another ffi library :-) but I looked for something not based on libffi with a smaller codebase to be easily compiled and the got carried away while coding.
 
+The whole thing will be hosted on my github page [https://github.com/MichaelMiR01/TclCInvoke], I also upload the original CInvoke codebase, so you can easily see the changes I applied.
 
-CInvoke: Another Foreign Function Interface
+Meanwhile some bugfixes (there are still some left, don't worry) and basic code cleaning took place. The actual repository seems to be stable, it compiles under linux_86_64 and win32 with gcc successfully. 
 
-MiR 2023-03-08 I played around with CInvoke, a very old implementation of a basic Foreign Funtion Interface from https://www.nongnu.org/cinvoke/ Finally, after adapting the code base of CInvoke a bit and implementing a basic TCL library, I came up with a proof of concept. I know, that there are two much more elaborate libs, ffidl and cffi, wich take care of ffi under TCL, so there actually is no need for another ffi library :-) but I looked for something not based on libffi with a smaller codebase to be easily compiled and the got carried away while coding.
+Moreover I added a spin-off to the tcc4tcl-dev repo [https://github.com/MichaelMiR01/tcc4tcl_dev], so it now can take tagged pointers from CInvoke. Therefor it is now possible, to build CStruct and CType in TCL, manipulate it and give it's pointer to a C-function to compile with tcc4tcl (or any other compiler) with just adding a simple #include and package require to the Tcl source
 
-The whole thing will be hosted on my github page [L1 ], I also upload the original CInvoke codebase, so you can easily see the changes I applied.
+***Some words on CInvoke***
+First, this beast is really old, so the plattfrom specific support is a bit dated. There is support for linux x64 (tested, works) and Linux x86 (didn't test), Win32 (had to patch this to work with gcc, works, Original version seems to be destined to MSVC) and there is some sparc code and ppc_osx, wich I didn't look at.
+Second, the implementation uses the stack pointer to post function arguments on the stack and newer versions of gcc complain about clobbering the stack register. The code still compiles, but be warned, other compiler might block this behaviour (TCC for example doesn't warn but will error out on this)
+So, while it was fun to code this little piece, I have no hope this will hold up to the future and break when gcc decides to error out also on clobbering &esp.
 
-2023-03-17: Meanwhile some bugfixes (there are still some left, don't worry) and basic code cleaning took place. The actual repository seems to be stable, it compiles under linux_86_64 and win32 with gcc successfully.
+I took some inspiration (and code) as well from ffidl as from cffi. The whole tcl-stubs implementation is taken from ffidl, the pointer-tagging is taken from cffi.
+The rest is implemented from scratch. Since I'm no professional coder I know, that the code could need a reasonable amount of refactoring and de-spagetthifiing but anyway, limited on time resources I publish this anyway.
 
-Moreover I added a spin-off to the tcc4tcl-dev repo [L2 ], so it now can take tagged pointers from CInvoke. Therefor it is now possible, to build CStruct and CType in TCL, manipulate it and give it's pointer to a C-function to compile with tcc4tcl (or any other compiler) with just adding a simple #include and package require to the Tcl source
-Some words on CInvoke
+***Introduction***
 
-First, this beast is really old, so the plattfrom specific support is a bit dated. There is support for linux x64 (tested, works) and Linux x86 (didn't test), Win32 (had to patch this to work with gcc, works, Original version seems to be destined to MSVC) and there is some sparc code and ppc_osx, wich I didn't look at. Second, the implementation uses the stack pointer to post function arguments on the stack and newer versions of gcc complain about clobbering the stack register. The code still compiles, but be warned, other compiler might block this behaviour (TCC for example doesn't warn but will error out on this) So, while it was fun to code this little piece, I have no hope this will hold up to the future... and break when gcc decides to error out also on clobbering &esp.
+Approaching the interface I decided to take a more TCL route and separated out the main funtionality into Commands.
+There are 5 main Commands:
 
-I took some inspiration (and code) as well from ffidl as from cffi. The whole tcl-stubs implementation is taken from ffidl, the pointer-tagging is taken from cffi. The rest is implemented from scratch. Since I'm no professional coder I know, that the code could need a reasonable amount of refactoring and de-spagetthifiing... but anyway, limited on time resources I publish this anyway.
-Introduction
-
-Approaching the interface I decided to take a more TCL route and separated out the main funtionality into Commands. There are 5 main Commands:
-
+```tcl
 CInvoke
 CType
 CData
 CStruct
 CCallback
+```
 
 Each of has an initial command to instance an ensaemble of named commands, wich will handle the further work. See examples beneath.
 
 and there are some support commands
 
+```tcl
 typedef
 sizeof
 PointerCast
+```
 
-CInvoke
-
+***CInvoke***
 implements the main interface to loading dynamic libraries, getting symbol adresses and invoke functions on it.
 
 To open a dll, instance a CInvoke command:
 
+```tcl
 CInvoke pathto/libname[info sharedlibextension] mylib
-
+```
 the resulting command mylib has two subcommands: getadr and function
-
+```tcl
 mylib getadr SYMBOLNAME
 mylib function SYMBOLNAME TCL-PROCNAME _returntype_ {LIST _paramtypes_}
-
-Usage: Given a dll, that holds the symbol hellofunc
-
+```
+Usage:
+Given a dll, that holds the symbol hellofunc
+```tcl
 set hellodata [mylib getadr hellofunc]
-
+```
 will return a tagged pointer 0x0000012345^SYMBOL
 
 The SYMBOL tag signals, that this is an external symbol. If you need to use this directly you will have to PointerCast this to a usable type. (See the chapter on pointers beneath)
 
-Given a function in yourlib.dll/.so defined as int hellofunc(int a, int b); You will define a function as follows:
-
+Given a function in yourlib.dll/.so defined as int hellofunc(int a, int b);
+You will define a function as follows:
+```tcl
 mylib function hellofunc Tcl_hellofunc int {int int}
 #Now we can call 
 set result [hellofunc 123 456]
+```
 
-...
-CType
+***CType***
+CType represents typed values in TCL space. These are useful, if we need a referenced value like int*
+We will use these also to instance CStruct (see beneath)
 
-CType represents typed values in TCL space. These are useful, if we need a referenced value like int* We will use these also to instance CStruct (see beneath)
-
+```tcl
 CType int myint 123
 set myint 456
 puts [myint get]
@@ -76,19 +84,28 @@ myint get
 myint setptr
 myint getptr
 myint getptr*
+```
 
-getptr and getptr* can be used for foreign functions, that use pointers as arguments. It is typesafe and can be used to retrieve values by pointer. How differ getptr and getptr*? Well, the value of a CType is a memoryadress, so getptr basically returns this adress. If the value is already a ptr type, getting it's adress returns a double ptr. Sometimes we need the value of the pointer, and that's where getptr* comes into play, it returns the ptr-value.
+getptr and getptr* can be used for foreign functions, that use pointers as arguments. It is typesafe and can be used to retrieve values by pointer.
+How differ getptr and getptr*?
+Well, the value of a CType is a memoryadress, so getptr basically returns this adress. If the value is already a ptr type, getting it's adress returns a double ptr.
+Sometimes we need the value of the pointer, and that's where getptr* comes into play, it returns the ptr-value.
 
-Samples for getptr: Given a dll holds a function int hellofunc(int* a, int* b); that returns values by pointer in *a and *b
+Samples for getptr:
+Given a dll holds a function int hellofunc(int* a, int* b); that returns values by pointer in *a and *b
 
+```tcl
 CType int a 123
 CType int b 456
 mylib function hellofunc tcl_hellofunc int {ptr.int ptr.int} 
 set ok [tcl_hellfunc [a getptr] [b getptr]]
 puts "a: [a get] b: [b get]"
+```
 
-Sample for getptr* our lib now has a routine, that works on a struct with data. The ptr data needs to point to the bytearray, where the data is stored.
+Sample for getptr*
+our lib now has a routine, that works on a struct with data. The ptr data needs to point to the bytearray, where the data is stored.
 
+```tcl
 # define bytearray with 1024 bytes length
 CDATA arrtype 1024
 
@@ -113,7 +130,9 @@ withdatavar set size 1024
 # and this will resolve the ptr as struct accordingly
 ci function test19 test19 int withdata
 set rv [test19 withdatavar]
+```
 
+```c
 # the according c code could look like this
 typedef struct _withdata {
     char* mydata;
@@ -133,23 +152,26 @@ DLLEXPORT int test19(withdata* wsb) {
 //
 }
 
-...
+```
+
 
 Basic types are listed beneath and you can even derive own types:
-
+```tcl
 typedef int myint
 typedef uint myuint
-
+```
 Syntax
-
+```tcl
 typdef typename basetype (size signed)
-
-Signed will invoke a cast to signed /unsigned values, where applicable. Size actually gets ignored :-)
+```
+Signed will invoke a cast to signed /unsigned values, where applicable.
+Size actually gets ignored :-)
 
 typedef can also be used to typedef structs, see according chapter about CStruct
 
 Arrays can be built with CTypes or as parts of CStructs
 
+```tcl
 CType int(5) anarray {1 2 3 4 5}
 anarray get 0
 anarray set 0 1
@@ -157,13 +179,13 @@ anarray set {1 2 3 4 5}
 anarray set 2 {3 4 5}
 
 anarray length 5
+```
 
-...
-Basic types
+***Basic types***
 
 Hardcoded into the system are
-
-funcdamental type from c 
+```tcl
+#fundamental types from c 
 
 char
 short
@@ -190,28 +212,28 @@ int32_t
 int64_t
 
 
-a generic ptr type
+#a generic ptr type
 ptr
 
-ptr representing a struct
+#ptr representing a struct
 struct
 
-Stringtypes
+#Stringtypes
 string              tcl allocated utf8-string
 utfstring           tcl allocated utf16-string
 char*               sys allocated utf8-string
 
-Datatypes
+#Datatypes
 bytearray           ptr representing a bytearray (char)
 bytevar             tcl-var to represent bytearray
 
-Special Types
+#Special Types
 tclobj              a Tcl_Obj*, that will be passed as ptr
 tclproc             a Tcl_Proc (for callbacks or callouts)
 
 interp              the actual instance of Tcl_Interp*
 
-Extended types
+#Extended types
 will be defined depending on System, under Win32 for example there are
 
 _Bool
@@ -252,14 +274,14 @@ ULONG_PTR
 USHORT
 WORD
 WPARAM
+```
 
-...
-CDATA
 
+***CDATA***
 CDATA is a specialized CType, that can handle bytearrays
 
 Usage
-
+```tcl
 CDATA mydata nbytes
 mydata set "1234"
 mydata get
@@ -269,16 +291,16 @@ mydata getptr*
 mydata memcpy
 mydata peek @
 mydata poke @ value
+```
 
-...
-CStruct
 
+***CStruct***
 CStruct can be used to construct c-like structs, set/get named values and pass them to functions (pass-by-pointer only). Substructs and Unions can be used, but they connot be named structs. So naming follows an explicit scheme like sub.a sub.b etc
 
 CStruct declares the definition, typedef prepares the type and CType instances a type of a struct.
 
 Usage
-
+```tcl
 CStruct structname {
    int a
    int b
@@ -298,13 +320,13 @@ mystructinstance memcpy << from // >> to (ptr)
 mystructinstance info 
 mystructinstance size
 mystructinstance struct
-
+```
 mystructinstance info, size and struct give information on the underlying struct definition.
 
 memcpy can be used to copy structs of the same type onto another, >> and << define the underlying direction to memcpy.
 
 Sample:
-
+```tcl
 typedef ptr CDATA
 CStruct Tk_PhotoImageBlock { 
     CDATA pixelPtr
@@ -339,8 +361,10 @@ if {[bytes get] ne [bytes2 get]} {
     puts "Error, got different data blocks"
 }
 
-CStrcut can also declare nested structs.
+```
 
+CStrcut can also declare nested structs.
+```tcl
 CStruct subs {
     char c
     int i
@@ -378,30 +402,31 @@ CStruct testsubs {
         }
     }
 }
+```
 
-...
-On Pointers and Scriptinglevel FFI
-
-The cffi webpage has a good introduction into pointers as seen from a TCL point of view. Pointers in an FFI are the easiest way to crash your script, so be careful, there might be dragons, no there ARE dragons. I stole the whole tagged pointer concept and part of the code from cffi... so it basically works the same way.
+***On Pointers and Scriptinglevel FFI***
+The cffi webpage has a good introduction into pointers as seen from a TCL point of view. Pointers in an FFI are the easiest way to crash your script, so be careful, there might be dragons, no there ARE dragons.
+I stole the whole tagged pointer concept and part of the code from cffi``` so it basically works the same way.
 
 Basic Pointer type is called ptr
-
+```tcl
 mylib function hellofunc tcl_hellofunc int {ptr ptr}
-
+```
 The basic ptr type is convertible in both ways, you can give a ptr type to all pointers and pass a ptr type everywhere.
 
 If you specify a special pointer, lets say to an int* this will get ptr.int
-
+```tcl
 mylib function hellofunc tcl_hellofunc int {ptr.int ptr.int}
+```
 
-As soon as a ptr is specified, it will only accept ptr tagged with the same type.
+As soon as a ptr is specified, it will only accept ptr tagged with the same type. 
 
 So, given a function in your dynlib defined as char* hellofunc(int* a, int* b); will get
 
 mylib function hellofunc tcl_hellofunc ptr.char* {ptr.int ptr.int}
 
 To feed the pointers to the function we need a CType:
-
+```tcl
 #define two int 
 CType int a
 CType int b
@@ -414,18 +439,19 @@ mylib function hellofunc tcl_hellofunc int {ptr.int ptr.int}
 puts [tcl_hellofunc [a getptr] [b getptr]]
 
 #hellofunc has the signature int hellofunc(int* a, int* b);
+```
 
 Basically, the tag can be any type predefined or user defined. You can even use arbitrary tags, if the pointer is opaque and doesn't need to be dereferenced on the script level
-
+```tcl
 mylib function opaqueresultfunction tcl_opaqueresultfunction ptr.opaquetype {int int}
 mylib function takeopaqueptrfunction tcl_takeopaqueptrfunction int {ptr.opaquetype}
 
 set ptropaque [tcl_opaqueresultfunction 123 456]
 tcl_takeopaqueptrfunction $ptropaque
+```
 
-...
-Sample code: Create a TCL-Command from TCL via CInvoke
-
+***Sample code: Create a TCL-Command from TCL via CInvoke***
+```tcl
 CInvoke "" mylib
 set Tcl_CreateObjCommand    [cinv::stubsymbol tcl stubs 96]; #Tcl_CreateObjCommand
 
@@ -476,5 +502,4 @@ Tcl_CreateObjCommand "." "test_tclcommand" [tclcommand getptr] [cd1 getptr] NULL
 
 #run
 test_tclcommand arg1 arg2 {l1 l2 l3}
-
-...
+```
