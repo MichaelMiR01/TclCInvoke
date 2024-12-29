@@ -51,7 +51,7 @@ ci function test20 test20 int {bytevar int}
 ci function test_hellodata test_hellodata "" "string"
 
 
-if {0} {
+if {1} {
 puts "Testing typedef"
 typedef  char testchar
 typedef  int testint
@@ -94,7 +94,7 @@ CType ext_test1 ulonglong 165
 puts [ext_test1 get]
 puts "ulonglong [sizeof ulonglong]"
 
-CType ext_test1 ptr 165
+CType ext_test1 ptr.int
 puts [ext_test1 get]
 puts "ptr [sizeof ptr]"
 

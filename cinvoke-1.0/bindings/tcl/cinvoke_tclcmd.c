@@ -235,6 +235,9 @@ void* cinv_alloc(size_t size, int fromsystem, char* dgbmsg, int linenr) {
     // 0
     // 1
     // 999
+    
+    void* dbgptr;
+    
     if(size==0) return NULL;
     if(fromsystem<0) return NULL; // don'T alloc
     
@@ -249,7 +252,9 @@ void* cinv_alloc(size_t size, int fromsystem, char* dgbmsg, int linenr) {
             return malloc(size);
 #ifdef MEMDEBUG
         case MEM_DEBUG:
-            return tcc_malloc_debug(size, dgbmsg,linenr);
+            dbgptr=  mdbg_malloc_debug(size, dgbmsg,linenr);
+            //printf("memory alloc %li %s %d %p\n",size,dgbmsg,linenr, dbgptr);
+            return dbgptr;
 #endif
         default:
             printf("Error memory not alloced %li\n",size);
@@ -280,7 +285,7 @@ void cinv_free(void* ptr, int fromsystem) {
             return;
 #ifdef MEMDEBUG
         case MEM_DEBUG:
-            tcc_free_debug(ptr);
+            mdbg_free_debug(ptr);
             return;
 #endif
         default:
@@ -313,6 +318,7 @@ char * tcl_strcat (char *dest, const char *src)
 void tcl_printf(const char *fmt, ...) {
     char buf[1024];
     char format[1024];
+    if(globalinterp==NULL) return;
     
     va_list args;
     va_start(args, fmt);
@@ -323,12 +329,25 @@ void tcl_printf(const char *fmt, ...) {
 }
 
 typedef struct _cinv_client {
+    int clientok;
   Tcl_HashTable types;
   Tcl_HashTable dyntypes;
   Tcl_HashTable structs;
   Tcl_HashTable commands;
 } cinv_client;
-static cinv_client *cinvclient;
+ //cinv_client *cinvclient;
+
+int check_cinv_client (cinv_client* client,int line) {
+    if(client==NULL) {
+        printf("client is NULL at line %d\n",line);
+        return -1;
+    }
+    if(client->clientok!=123456789) {
+        printf("client not a cinv_client %p at line %d\n",client,line);
+        return -1;
+    }
+    return 0;
+}
 
 typedef struct _CInv_Type {
     // struct for derived types
@@ -352,33 +371,38 @@ typedef enum _int__ {
 } int__;
 
 void def_type(CInv_Type* strt, size_t _size, int _cinv_basetype,int _cinv_inttype,int _alignment,int _isSigned,int _isPtr,char* _typename) {
-strt->size=_size;
-strt->cinv_basetype=_cinv_basetype;
-strt->cinv_inttype=_cinv_inttype;
-strt->alignment=_alignment;
-strt->isSigned=_isSigned;
-strt->isPtr=_isPtr;
-if(strt->typename!=NULL) cinv_free(strt->typename,MEM_TCL);
-strt->typename=tcl_strdup(_typename);
-if(strt->typetag!=NULL) cinv_free(strt->typetag,MEM_TCL);
-strt->typetag=tcl_strdup("");
+    strt->size=_size;
+    strt->cinv_basetype=_cinv_basetype;
+    strt->cinv_inttype=_cinv_inttype;
+    strt->alignment=_alignment;
+    strt->isSigned=_isSigned;
+    strt->isPtr=_isPtr;
+    //if(strt->typename!=NULL) cinv_free(strt->typename,MEM_TCL);
+    strt->typename=tcl_strdup(_typename);
+    //if(strt->typetag!=NULL) cinv_free(strt->typetag,MEM_TCL);
+    strt->typetag=tcl_strdup("");
+    //printf("def_type %s %p %p %p\n",strt->typename,strt,strt->typename,strt->typetag);
 }
 void copytype (CInv_Type* dest, CInv_Type* src) {
+    //printf ("copytype %p -> %p\n",src,dest);
     memcpy(dest,src,sizeof(CInv_Type));
 }
 static CInv_Type newtype = init_type(0,0,0,0,0,0);
 int type_release(CInv_Type* ttype) {
     //
     if(ttype==NULL) return 0;
-    //printf("Releasing %s %p %p %p\n",ttype->typename,ttype,ttype->typename,ttype->typetag);
+    //printf("type_release %s %p %p %p\n",ttype->typename,ttype,ttype->typename,ttype->typetag);
     //return 0;
     if(ttype->typename!=NULL) cinv_free(ttype->typename,MEM_TCL);
     if(ttype->typetag!=NULL) cinv_free(ttype->typetag,MEM_TCL);
+    ttype->typename=NULL;
+    ttype->typetag=NULL;
     cinv_free(ttype,MEM_TCL);
     return 0;
 }
 typedef struct _TclCInvokeState {
 	Tcl_Interp *interp;
+	cinv_client* ccinv_client;
 	Tcl_LoadHandle tcllib;
 	CInvContext *ctx;
 	CInvLibrary *lib;
@@ -391,6 +415,7 @@ typedef struct _TclCStructDef {
 } TclCStructDef;
 typedef struct _TclCStructState {
 	Tcl_Interp *interp;
+	cinv_client* ccinv_client;
 	char* typename;
 	CInvContext *ctx;
 	CInvStructure *cstruct;
@@ -415,6 +440,7 @@ typedef struct _TclCTypeState {
 } TclCTypeState;
 typedef struct _TclCCallbackState {
 	Tcl_Interp *interp;
+	cinv_client* ccinv_client;
 	CInvContext *ctx;
 	CInvFunction *prototype;
 	CInvCallback* callback;
@@ -432,6 +458,7 @@ typedef struct _TclCCallbackState {
 } TclCCallbackState;
 typedef struct _TclCCalloutState {
 	Tcl_Interp *interp;
+	cinv_client* ccinv_client;
 	CInvContext *ctx;
 	CInvFunction *cfunc;
 	int callingconvention;
@@ -451,7 +478,9 @@ static void entry_define(Tcl_HashTable *table, char *name, void *datum)
 {
   int dummy;
   Tcl_HashEntry *entry = Tcl_FindHashEntry(table,name);
-  if(entry!=NULL) Tcl_DeleteHashEntry(entry);
+  if(entry!=NULL) {
+      Tcl_DeleteHashEntry(entry);
+  }
   Tcl_SetHashValue(Tcl_CreateHashEntry(table,name,&dummy), datum);
 }
 /* lookup an existing entry */
@@ -478,13 +507,15 @@ static void *entry_lookup(Tcl_HashTable *table, char *name)
 /* define a new type */
 static void type_define(cinv_client *client, char *tname, CInv_Type *atype)
 {
+    if(check_cinv_client(client,__LINE__)<0) return;
     CInv_Type* ttype=cinv_alloc(sizeof(CInv_Type),MEM_TCL,"type_define",__LINE__);
     copytype(ttype,atype);
     if(ttype->typename!=NULL) cinv_free(ttype->typename,MEM_TCL);
     if(ttype->typetag!=NULL) cinv_free(ttype->typetag,MEM_TCL);
     ttype->typename=tcl_strdup(tname);
     ttype->typetag=tcl_strdup("");
-    Tcl_HashEntry *entry = Tcl_FindHashEntry(&cinvclient->types,tname);
+//printf("type_define %s %p %p %p\n",ttype->typename,ttype,ttype->typename,ttype->typetag);
+    Tcl_HashEntry *entry = Tcl_FindHashEntry(&client->types,ttype->typename);
     if(entry!=NULL) {
       CInv_Type* tso=Tcl_GetHashValue(entry);
       type_release(tso);
@@ -494,11 +525,12 @@ static void type_define(cinv_client *client, char *tname, CInv_Type *atype)
 }
 static void type_define_dyn(cinv_client *client, char *tname, CInv_Type *ttype)
 {
+    if(check_cinv_client(client,__LINE__)<0) return;
     if(ttype->typename!=NULL) cinv_free(ttype->typename,MEM_TCL);
     if(ttype->typetag!=NULL) cinv_free(ttype->typetag,MEM_TCL);
     ttype->typename=tcl_strdup(tname);
     ttype->typetag=tcl_strdup("");
-    Tcl_HashEntry *entry = Tcl_FindHashEntry(&cinvclient->dyntypes,tname);
+    Tcl_HashEntry *entry = Tcl_FindHashEntry(&client->dyntypes,tname);
     if(entry!=NULL) {
       CInv_Type* tso=Tcl_GetHashValue(entry);
       type_release(tso);
@@ -506,10 +538,12 @@ static void type_define_dyn(cinv_client *client, char *tname, CInv_Type *ttype)
     }      
     
     entry_define(&client->dyntypes,tname,(void*)ttype);
+//printf("type_define_dyn %s %p %p %p\n",ttype->typename,ttype,ttype->typename,ttype->typetag);
 }
 /* lookup an existing type */
 static CInv_Type *type_lookup(cinv_client *client, char *tname)
 {
+  if(check_cinv_client(client,__LINE__)<0) return NULL;
   void* entry=entry_lookup(&client->types,tname);
   if(entry==NULL) {
       entry=entry_lookup(&client->dyntypes,tname);
@@ -520,12 +554,15 @@ static CInv_Type *type_lookup(cinv_client *client, char *tname)
 static void client_delete(ClientData clientData, Tcl_Interp *interp)
 {
   cinv_client *client = (cinv_client *)clientData;
+  if(check_cinv_client(client,__LINE__)<0) return;
   Tcl_HashSearch search;
   Tcl_HashEntry *entry;
   
   if(client==NULL) return;
+  //return;
   Tcl_ResetResult(interp);
   /* free all allocated commands */
+  
   for (entry = Tcl_FirstHashEntry(&client->commands, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
       //printf("Freeing %s\n",Tcl_GetHashKey(&client->commands,entry));
       Tcl_DeleteCommand(interp,Tcl_GetHashKey(&client->commands,entry));
@@ -539,22 +576,27 @@ static void client_delete(ClientData clientData, Tcl_Interp *interp)
       cinv_free(ts,MEM_TCL);
   }
   Tcl_DeleteHashTable(&client->structs);
+  
   /* free all allocated typedefs */
+  
   for (entry = Tcl_FirstHashEntry(&client->dyntypes, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
-      //printf("Freeing %s\n",Tcl_GetHashKey(&client->dyntypes,entry));
       CInv_Type* ctype=Tcl_GetHashValue(entry);
+      //printf("Freeing dyntype %s %p\n",Tcl_GetHashKey(&client->dyntypes,entry),ctype);
       type_release(ctype);
   }
   Tcl_DeleteHashTable(&client->dyntypes);
+  
   for (entry = Tcl_FirstHashEntry(&client->types, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
-      //printf("Freeing %s\n",Tcl_GetHashKey(&client->types,entry));
       CInv_Type* ctype=Tcl_GetHashValue(entry);
+      //printf("Freeing type %s %p\n",Tcl_GetHashKey(&client->types,entry),ctype);
       type_release(ctype);
   }
   Tcl_DeleteHashTable(&client->types);
- 
   /* free client structure */
+  client->clientok=0;
   cinv_free((void *)client,MEM_TCL);
+  //cinvclient=NULL;
+  //globalinterp=NULL;
 }
 /* client allocation and initialization */
 static cinv_client *client_alloc(Tcl_Interp *interp)
@@ -563,7 +605,7 @@ static cinv_client *client_alloc(Tcl_Interp *interp)
 
   /* allocate client data structure */
   client = (cinv_client *)cinv_alloc(sizeof(cinv_client),MEM_TCL,"client alloc",__LINE__);
-
+  client->clientok=123456789;
   /* allocate hashtables for this load */
   Tcl_InitHashTable(&client->types, TCL_STRING_KEYS);
   Tcl_InitHashTable(&client->dyntypes, TCL_STRING_KEYS);
@@ -632,9 +674,8 @@ enum basiccinvtypes {
     static CInv_Type cinv_type_ ## newtype_ = init_type(0,0,0,0,0,0);                   \
     do {                                                                      \
         if(existingIndex_<0) return TCL_ERROR; \
-        /*printf("cinv_type_"# newtype_"\n");*/ \
         def_type(&cinv_type_ ## newtype_, sizeof(newtype_), existingIndex_, existingIndex_, 0,isSigned_, 0, #newtype_); \
-        type_define(cinvclient,  #newtype_ , &cinv_type_ ## newtype_); \
+        type_define(client,  #newtype_ , &cinv_type_ ## newtype_); \
     } while (0)
 
 #define ADDINTTYPE(type_)               \
@@ -672,10 +713,12 @@ char* buildnamespacename(Tcl_Interp* interp,char* cmdname) {
     cinv_free(currentns,MEM_TCL);
     return r;
 }
-Tcl_Command Tcl_CreateObjCommandNS(Tcl_Interp* interp, char* cmdName, void* proc, void* clientData, void* deleteProc) {
+Tcl_Command Tcl_CreateObjCommandNS(Tcl_Interp* interp, cinv_client* client, char* cmdName, void* proc, void* clientData, void* deleteProc) {
+    //cinv_client *client = (cinv_client *)clientData;
+    if(check_cinv_client(client,__LINE__)<0) return NULL;
     char* nscmdname=buildnamespacename(interp,cmdName);
     Tcl_Command rv= Tcl_CreateObjCommand(interp, nscmdname, proc, clientData, deleteProc);
-    entry_define(&cinvclient->commands,nscmdname,rv);
+    entry_define(&client->commands,nscmdname,rv);
     Tcl_AppendResult(interp,nscmdname,NULL);
     cinv_free(nscmdname,MEM_TCL);
     return rv;
@@ -827,12 +870,14 @@ int get_type_from_size(int size) {
     }
     return -1;
 }
-int get_type_from_str(Tcl_Interp *interp, Tcl_Obj *strin, int *type, CInv_Type** xtype) {
+int get_type_from_str(Tcl_Interp *interp, ClientData cdata, Tcl_Obj *strin, int *type, CInv_Type** xtype) {
     // define basic and more common types
     // string will be used as const char*
     // otherwise use CType string and use getptr
     // returns a FIXED ADRESS of a type
     // COPY if necessary with alloc//copytype
+	cinv_client* client=cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     
     static CONST char *cinvtypes[] = {
 		"char", "short", "int", "long", "longlong", "float", "double", "ptr",
@@ -858,7 +903,7 @@ int get_type_from_str(Tcl_Interp *interp, Tcl_Obj *strin, int *type, CInv_Type**
                 type) != TCL_OK) {
         // lookup extended types
         Tcl_ResetResult(interp);
-        CInv_Type* ixtype=type_lookup(cinvclient,str1);
+        CInv_Type* ixtype=type_lookup(cdata,str1);
         if(ixtype==NULL) {
             Tcl_AppendResult(interp, "Type not found ",Tcl_GetString(str)," ",tag,NULL);
             cinv_free(str1,MEM_TCL);
@@ -902,13 +947,17 @@ int get_type_from_str(Tcl_Interp *interp, Tcl_Obj *strin, int *type, CInv_Type**
     
     return TCL_OK;
 }
-int get_type_from_name(Tcl_Interp *interp,TclCStructState *ts, Tcl_Obj *name, CInv_Type **xtype, int *asarray) {
+int get_type_from_name(Tcl_Interp *interp, ClientData cdata,TclCStructState *ts, Tcl_Obj *name, CInv_Type **xtype, int *asarray) {
 	Tcl_Obj** ndeflist;
 	int llength, isarray;
 	char *cstr,*elem;
     Tcl_Obj **sublist;
     int sublength;
 	int type=-1;
+	
+	cinv_client* client=cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+	
 	
 	Tcl_Obj* odeflist=ts->deflist;
 	llength=ts->deflen;
@@ -932,7 +981,7 @@ int get_type_from_name(Tcl_Interp *interp,TclCStructState *ts, Tcl_Obj *name, CI
             tssub = (void *) cinv_alloc(sizeof(*tssub),MEM_TCL,"get_type_from_name",__LINE__);
             tssub->deflist=ndeflist[i+1];
             tssub->deflen=sublength;
-            if (get_type_from_name(interp,tssub,name, xtype,asarray)==TCL_OK) {
+            if (get_type_from_name(interp,client,tssub,name, xtype,asarray)==TCL_OK) {
                 cinv_free(tssub,MEM_TCL);
                 cinv_free(elem,MEM_SYSTEM);
                 return TCL_OK;
@@ -947,7 +996,7 @@ int get_type_from_name(Tcl_Interp *interp,TclCStructState *ts, Tcl_Obj *name, CI
             if (isarray>0) {
                 *asarray=isarray;
             } 
-            if (get_type_from_str(interp,ndeflist[i], &type,xtype)!=TCL_OK) return TCL_ERROR;
+            if (get_type_from_str(interp,client,ndeflist[i], &type,xtype)!=TCL_OK) return TCL_ERROR;
             //printf("Getting type from name %d %p %p\n",type,xtype,&xtype);
             found++;
             cinv_free(elem,MEM_SYSTEM);
@@ -1291,6 +1340,28 @@ Tcl_Obj* set_obj_from_value(Tcl_Interp *interp, int cinvtype, CInv_Type* xtype, 
 	
     return NULL;
 }
+void context_set_error2(CInvContext *context, int code, char *str, int needsfree) {
+	//if (context->needsfree)
+	//	free(context->errormsg);
+    
+	//context->errorcode = code;
+	//context->errormsg = str;
+	//context->needsfree = needsfree;
+}
+void context_clear_error2(CInvContext *context) {
+	context_set_error2(context, 0, "...", 0);
+}
+
+cinv_status_t cinv_function_delete_err(CInvContext *context,
+	CInvFunction *function) {
+	free(function->parmstacksizes);
+	free(function->parmmemsizes);
+	free(function->parmtypes);
+	free(function->regparms);
+	free(function);
+	context_clear_error2(context);
+	return CINV_SUCCESS;
+}
 
 static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl_Obj * CONST objv[]) {
     //
@@ -1312,6 +1383,9 @@ static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl
     TclCCalloutState* ts;
     ts=(TclCCalloutState*) cdata;
     ctx=ts->ctx;
+    
+    cinv_client *client = (cinv_client *)ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     
     void* funcptr=ts->entrypoint;
     ret_type=ts->return_type;
@@ -1338,11 +1412,12 @@ static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl
         parameters = cinv_alloc(len * sizeof(void*),MEM_TCL,"CInvokeHandleCmd",__LINE__);
         paramsig= cinv_alloc((len+1) * sizeof(char),MEM_TCL,"CInvokeHandleCmd",__LINE__);
         paramtypes=cinv_alloc(len * sizeof(int),MEM_TCL,"CInvokeHandleCmd",__LINE__);
+
         for (int i = 0; i < len; i++) {
             
             paramstring=Tcl_GetString(paramlist[i]);
             //Tcl_AppendResult(interp,paramstring,NULL);
-            if (get_type_from_str(interp,paramlist[i], &int_type,&xtype)!=TCL_OK) return TCL_ERROR;
+            if (get_type_from_str(interp,client,paramlist[i], &int_type,&xtype)!=TCL_OK) return TCL_ERROR;
 //printf("got type %s as %d %p\n",paramstring,int_type,&xtype);
 //printf("%d %d size %d %s\n",xtype->cinv_basetype,xtype->cinv_inttype, xtype->size,xtype->typetag);
 
@@ -1412,16 +1487,18 @@ static int CCalloutCallout  (ClientData cdata, Tcl_Interp *interp, int objc, Tcl
         Tcl_AppendResult(interp,"invoke failed: \n", cinv_context_geterrormsg(ctx),NULL);
         return TCL_ERROR;
     }
+    char mbuf [1024];
+    sprintf(mbuf,"Ctx: %p Ft: %p",ctx,f);
     //printf("ready %s %s\n",retsig,paramsig);
     if(ret_type>0) {
         Tcl_Obj* o=Tcl_NewStringObj(ts->returnstring,-1);
-        if (get_type_from_str(interp,o, &ret_type,&rxtype)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,o, &ret_type,&rxtype)!=TCL_OK) return TCL_ERROR;
         Tcl_Obj *obj=set_obj_from_value(interp, ret_type,rxtype, &returnval, 0);
         if(obj!=NULL) Tcl_SetObjResult(interp,obj);
         type_release(rxtype);
         Tcl_DecrRefCount(o);
     }
-    cinv_function_delete(ctx, f);
+    cinv_function_delete_err(ctx, f);
     
     for (int i = 0; i < len; i++) {
         //
@@ -1476,7 +1553,7 @@ static void CInvokeCCommandDeleteProc(ClientData cdata) {
 
 	if (lib!=NULL) {
         if (!cinv_library_delete(ctx, lib)) {
-            //Tcl_AppendResult(interp, "Error deleting library",cinv_context_geterrormsg(ctx),NULL);
+            Tcl_AppendResult(interp, "Error deleting library",cinv_context_geterrormsg(ctx),NULL);
             //return;
         }
     }
@@ -1504,7 +1581,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	//char buf[256];
 	int len,is_PtrType;
     int int_type,cinv_type, ret_type;
-
+    
 	TclCInvokeState *ts;
 	CInvContext *ctx ;
 	CInv_Type* xtype, *rxtype;
@@ -1546,7 +1623,9 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	ts = (TclCInvokeState *) cdata;
 	ctx = ts->ctx;
 	libhandle = ts->tcllib;
-	
+    cinv_client *client = (cinv_client *)ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "subcommand arg ?arg ...?");
         return TCL_ERROR;
@@ -1606,7 +1685,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 retstring=Tcl_GetString(objv[3]);
 
                 if(strlen(retstring)>0) {
-                    if (get_type_from_str(interp,objv[3], &ret_type,NULL)!=TCL_OK) return TCL_ERROR;
+                    if (get_type_from_str(interp,client,objv[3], &ret_type,NULL)!=TCL_OK) return TCL_ERROR;
                     if (ret_type<0) {
                         Tcl_AppendResult(interp, "Unknown type ",TclGetString(objv[3]),NULL);
                         return TCL_ERROR;
@@ -1632,7 +1711,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     for (int i = 0; i < len; i++) {
                         xtype=NULL;
                         paramstring=Tcl_GetString(paramlist[i]);
-                        if (get_type_from_str(interp,paramlist[i], &int_type,&xtype)!=TCL_OK) {
+                        if (get_type_from_str(interp,client,paramlist[i], &int_type,&xtype)!=TCL_OK) {
                             return TCL_ERROR;
                         }
                         //printf("got type as %d %p %p\n",int_type,&xtype,xtype);
@@ -1720,7 +1799,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 //printf("ready %s %s\n",retsig,paramsig);
                 if(ret_type>0) {
                     //printf("returntype is %s\n",Tcl_GetString(objv[3])); 
-                    if (get_type_from_str(interp,objv[3], &ret_type,&rxtype)!=TCL_OK) return TCL_ERROR;
+                    if (get_type_from_str(interp,client,objv[3], &ret_type,&rxtype)!=TCL_OK) return TCL_ERROR;
                     Tcl_Obj *obj=set_obj_from_value(interp, ret_type,rxtype, &returnval, 0);
                     if(obj!=NULL) Tcl_SetObjResult(interp,obj);
                     type_release(rxtype);
@@ -1764,7 +1843,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 }
                 
                 if(strlen(retstring)>0) {
-                    if (get_type_from_str(interp,objv[4], &ret_type,NULL)!=TCL_OK) return TCL_ERROR;
+                    if (get_type_from_str(interp,client,objv[4], &ret_type,NULL)!=TCL_OK) return TCL_ERROR;
                     if (ret_type<0) {
                         Tcl_AppendResult(interp, "Unknown type ",TclGetString(objv[4]),NULL);
                         return TCL_ERROR;
@@ -1793,6 +1872,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 Tcl_ResetResult(interp);
                 TclCCalloutState* tsc=cinv_alloc(sizeof(TclCCalloutState),MEM_TCL,"CINV_FUNCCREATE",__LINE__);
                 tsc->interp=interp;
+                tsc->ccinv_client=client;
                 tsc->ctx=ctx;
                 tsc->cfunc=NULL;
                 tsc->callingconvention=ts->callingconvention; //--> use CINV_CC_DEFAULT
@@ -1802,7 +1882,7 @@ static int CInvokeHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                 Tcl_IncrRefCount(tsc->paramlist);
                 tsc->returnstring=tcl_strdup(retstring);
                 tsc->return_type=ret_type;
-                Tcl_CreateObjCommandNS(interp,funcname,CCalloutCallout,tsc,CCalloutCCommandDeleteProc);
+                Tcl_CreateObjCommandNS(interp,client,funcname,CCalloutCallout,tsc,CCalloutCCommandDeleteProc);
                 
                 //printf("call succeeded\n");
                 return TCL_OK; 
@@ -1818,6 +1898,9 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	CInvContext *ctx;
 	//CInvLibrary *lib;
     Tcl_LoadHandle libhandle;
+    
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 
 	if (objc < 2 || objc > 4) {
 		Tcl_WrongNumArgs(interp, 1, objv, "libraryname handle [callingconvention]");
@@ -1835,6 +1918,7 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	ts->tcllib = NULL;
 	ts->lib=NULL;
 	ts->callingconvention=CINV_CC_DEFAULT;
+	ts->ccinv_client=client;
 	if(strlen(Tcl_GetString(objv[1]))>0) {
 	    Tcl_LoadFile(interp, objv[1], NULL, 0, NULL, &libhandle);
         ts->tcllib = libhandle;
@@ -1855,12 +1939,12 @@ static int CInvokeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
     }
 
 
-	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[objc-1]),CInvokeHandleCmd,ts,CInvokeCCommandDeleteProc);
+	Tcl_CreateObjCommandNS(interp,client,Tcl_GetString(objv[objc-1]),CInvokeHandleCmd,ts,CInvokeCCommandDeleteProc);
 
 	return TCL_OK;
 }
 
-static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name, Tcl_Obj* result, int depth) {
+static int ParseStruct(Tcl_Interp *interp,ClientData cdata,Tcl_Obj* defstring,  const char* name, Tcl_Obj* result, int depth) {
     // preparse structs to get substructs implemented properly
 	char *elem,*type;
 	Tcl_Obj *obj;
@@ -1869,6 +1953,8 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
     TclCStructDef *entry;
     char *substrname;
     char *substrelem;
+    cinv_client *client = (cinv_client *)cdata;   
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     
     if(depth>32) {
         // to avoid recursive nesting...
@@ -1895,7 +1981,7 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
         substrname=cinv_alloc(strlen(type)+strlen(elem)+strlen(name)+16,MEM_TCL, "ParseStruct",__LINE__);
         // lookup other structs
         if(elem[0]!='*') {
-            entry=entry_lookup(&cinvclient->structs,Tcl_GetString(deflist[i]));
+            entry=entry_lookup(&client->structs,Tcl_GetString(deflist[i]));
         } else {
             entry=NULL;
         }
@@ -1912,7 +1998,7 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
                 Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                 return TCL_ERROR;
             }
-            if(ParseStruct(interp, entry->definition, substrname, obj, depth+1)!=TCL_OK) {
+            if(ParseStruct(interp,cdata, entry->definition, substrname, obj, depth+1)!=TCL_OK) {
                 return TCL_ERROR;
             }
             if(Tcl_ListObjAppendElement(interp, result, obj)) {
@@ -1928,7 +2014,7 @@ static int ParseStruct(Tcl_Interp *interp,Tcl_Obj* defstring,  const char* name,
                     Tcl_AppendResult(interp, "Struct parse error... invalid list",NULL);
                     return TCL_ERROR;
                 }
-                if(ParseStruct(interp, deflist[i+1], name, obj, depth+1)!=TCL_OK) {
+                if(ParseStruct(interp,cdata, deflist[i+1], name, obj, depth+1)!=TCL_OK) {
                     return TCL_ERROR;
                 }
                 if(Tcl_ListObjAppendElement(interp, result, obj)) {
@@ -1969,6 +2055,9 @@ static int DeleteUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
     //
 	CInvContext *ctx=ts->ctx;
 	CInvStructure *tstruct;
+	cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+
 	char *elem;
 
     Tcl_Obj **sublist;
@@ -2000,7 +2089,7 @@ static int DeleteUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
             continue;
         }
         
-        if (get_type_from_str(interp,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
         if (itype<0) {
             Tcl_AppendResult(interp, "Unknown type ",TclGetString(deflist[i]),NULL);
             return TCL_ERROR;
@@ -2051,6 +2140,8 @@ static int DeleteUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
 static int DeleteStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflist, int llength, CInvStructure *tstruct) {
     //
 	CInvContext *ctx=ts->ctx;
+	cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	char *elem;
     Tcl_Obj **sublist;
     int sublength;
@@ -2080,7 +2171,7 @@ static int DeleteStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
             continue;
         }
         
-        if (get_type_from_str(interp,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
         //printf("Deleting struct %s %s\n",elem,Tcl_GetString(deflist[i]));
         if (itype<0) {
             Tcl_AppendResult(interp, "Unknown type ",TclGetString(deflist[i]),NULL);
@@ -2132,6 +2223,8 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
 static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflist, int llength, CInvStructure *outstruct) {
     //
 	CInvContext *ctx=ts->ctx;
+    cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	CInvStructure *tstruct;
 	CInv_Type* xtype;
 	char *elem;
@@ -2199,7 +2292,7 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
             continue;
         }
         
-        if (get_type_from_str(interp,deflist[i], &itype,&xtype)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,deflist[i], &itype,&xtype)!=TCL_OK) return TCL_ERROR;
         if (itype<0) {
             Tcl_AppendResult(interp, "Unknown type ",TclGetString(deflist[i]),NULL);
             return TCL_ERROR;
@@ -2238,6 +2331,8 @@ static int CreateUnion(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflis
 static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** deflist, int llength, CInvStructure **outstruct) {
     //
 	CInvContext *ctx=ts->ctx;
+    cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	CInvStructure *tstruct= cinv_structure_create(ctx);
 	char *elem;
 	char substrname[128];
@@ -2295,7 +2390,7 @@ static int CreateStruct(Tcl_Interp *interp, TclCStructState *ts, Tcl_Obj** defli
             continue;
         }
         
-        if (get_type_from_str(interp,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,deflist[i], &itype,NULL)!=TCL_OK) return TCL_ERROR;
         if (itype<0) {
             Tcl_AppendResult(interp, "Unknown type ",TclGetString(deflist[i]),NULL);
             return TCL_ERROR;
@@ -2348,7 +2443,6 @@ static void CStructCCommandDeleteProc(ClientData cdata) {
 	tstruct=ts->cstruct;
 	instance=ts->instance;
 	Tcl_Interp* interp=ts->interp;
-	//printf("Deleting %p %p\n",tstruct,instance);
     if (Tcl_ListObjGetElements(interp, ts->deflist, &llength, &deflist)==TCL_OK) {
         if(DeleteStruct(interp, ts,deflist,llength, tstruct)!=TCL_OK) {
             // error, but we wont handle it
@@ -2430,6 +2524,9 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	if(ctx==NULL) return TCL_ERROR;
 	if(instance==NULL) return TCL_ERROR;
 	if(tstruct==NULL) return TCL_ERROR;
+
+	cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "subcommand arg ?arg ...?");
@@ -2461,7 +2558,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     value=objv[4];
                 }
                 
-                if (get_type_from_name(interp,ts,key,&xtype,&iarray)!=TCL_OK) {
+                if (get_type_from_name(interp,client,ts,key,&xtype,&iarray)!=TCL_OK) {
                     Tcl_AppendResult(interp, "Struct-Type not found ",Tcl_GetString(key),NULL);
                     return TCL_ERROR;
                 }
@@ -2539,7 +2636,7 @@ static int CStructHandleCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
                     idx=objv[3];
                 }
                 
-                if (get_type_from_name(interp,ts,key, &xtype,&iarray)!=TCL_OK) {
+                if (get_type_from_name(interp,client,ts,key, &xtype,&iarray)!=TCL_OK) {
                     Tcl_AppendResult(interp, "Element not found ",Tcl_GetString(objv[2]),NULL);
                     return TCL_ERROR;
                 }
@@ -2697,6 +2794,9 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	CInvContext *ctx;
 	CInvStructure *tstruct;
 	//char buf[256];
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+
 	if (objc < 4 || objc > 4) {
 		Tcl_WrongNumArgs(interp, 1, objv, "structname structtype definition");
 		return TCL_ERROR;
@@ -2711,7 +2811,9 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	ts = cinv_alloc(sizeof(*ts),MEM_TCL,"CStructCreateCmd",__LINE__);
 	ts->ctx = ctx;
 	ts->interp=interp;
-	
+	ts->ccinv_client=client;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+
 	Tcl_Obj **deflist;
 	int llength;
 
@@ -2747,12 +2849,14 @@ static int CStructCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl
 	}   
 	
 	Tcl_IncrRefCount(ts->deflist);
-	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[1]),CStructHandleCmd,ts,CStructCCommandDeleteProc);
+	Tcl_CreateObjCommandNS(interp,client,Tcl_GetString(objv[1]),CStructHandleCmd,ts,CStructCCommandDeleteProc);
 	return TCL_OK;
 }
 
 static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_Obj * CONST objv[]){
 	TclCStructDef *ts;
+	cinv_client *client = (cinv_client *)cdata;   
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	//char buf[256];
 	if (objc < 3 || objc > 3) {
 		Tcl_WrongNumArgs(interp, 1, objv, "structname definition");
@@ -2764,7 +2868,7 @@ static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	ts->structname=objv[1];
 	ts->definition=objv[2];
     Tcl_Obj* newdef=Tcl_NewListObj(0,NULL);;
-    if(ParseStruct(interp, ts->definition, "", newdef, 0)!=TCL_OK) {
+    if(ParseStruct(interp, cdata, ts->definition, "", newdef, 0)!=TCL_OK) {
         return TCL_ERROR;
     }
     if(newdef!=NULL) {
@@ -2773,7 +2877,7 @@ static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tc
     }
 	Tcl_IncrRefCount(ts->structname);
     Tcl_IncrRefCount(ts->definition);
-    Tcl_HashEntry *entry = Tcl_FindHashEntry(&cinvclient->structs,Tcl_GetString(objv[1]));
+    Tcl_HashEntry *entry = Tcl_FindHashEntry(&client->structs,Tcl_GetString(objv[1]));
     if(entry!=NULL) {
       TclCStructDef* tso=Tcl_GetHashValue(entry);
       Tcl_DecrRefCount(tso->structname);
@@ -2782,7 +2886,7 @@ static int CStructDeclareCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tc
       Tcl_DeleteHashEntry(entry);
     }      
     
-	entry_define(&cinvclient->structs,Tcl_GetString(objv[1]),ts);
+	entry_define(&client->structs,Tcl_GetString(objv[1]),ts);
 	//typedef here
 	return TCL_OK;
 }
@@ -3073,7 +3177,8 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
     Tcl_Obj** deflist;
     int llength;
     PTR_TYPE* valptr;
-    
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     	
 	if (objc < 3 || objc > 5) {
 		Tcl_WrongNumArgs(interp, 1, objv, "typename type [length] [value]");
@@ -3108,11 +3213,11 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
         strtok(string,"()");
         Tcl_Obj* o= Tcl_NewStringObj(string,-1);
         cinv_free(string,MEM_TCL);
-        if (get_type_from_str(interp,o, &itype,&xtype)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,o, &itype,&xtype)!=TCL_OK) return TCL_ERROR;
         Tcl_DecrRefCount(o);
         if(Tcl_GetIntFromObj(interp,objv[3],&arrlen)!=TCL_OK) return TCL_ERROR;
     } else {
-        if (get_type_from_str(interp,objv[2], &itype,&xtype)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,objv[2], &itype,&xtype)!=TCL_OK) return TCL_ERROR;
     }
     if (itype<0) {
         Tcl_AppendResult(interp, "Unknown type ",TclGetString(objv[2]),NULL);
@@ -3125,7 +3230,7 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
         char* tname=Tcl_GetString(objv[2]);
         // handle struct def here
         //printf("Instancing struct %s\n",tname);
-        TclCStructDef *entry=entry_lookup(&cinvclient->structs,tname);
+        TclCStructDef *entry=entry_lookup(&client->structs,tname);
         if(entry==NULL) {
             Tcl_AppendResult(interp,"Struct not found ",tname,NULL);
             return TCL_ERROR;
@@ -3141,7 +3246,7 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
         cmdobjv[1]=objv[1];
         cmdobjv[2]=objv[2];
         cmdobjv[3]=entry->definition;
-        if(CStructCreateCmd(NULL,interp,4,cmdobjv)!=TCL_OK) {
+        if(CStructCreateCmd(client,interp,4,cmdobjv)!=TCL_OK) {
             Tcl_AppendResult(interp, "Couldn't create instance of ",tname, "\n",NULL);
             return TCL_ERROR;
         }
@@ -3202,7 +3307,7 @@ static int CTypeCreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
 	    
 	}
 	
-	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[1]),CTypeHandleCmd,ts,CTypeCCommandDeleteProc);
+	Tcl_CreateObjCommandNS(interp,client,Tcl_GetString(objv[1]),CTypeHandleCmd,ts,CTypeCCommandDeleteProc);
 	return TCL_OK;
 }
 
@@ -3501,6 +3606,8 @@ static int CDATACreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
     int itype=-1;
     int datasize=1;
     //char buf[256];
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     	
 	if (objc < 3 || objc > 3) {
 		Tcl_WrongNumArgs(interp, 1, objv, "typename length");
@@ -3549,7 +3656,7 @@ static int CDATACreateCmd( ClientData cdata, Tcl_Interp *interp, int objc, Tcl_O
     (datasize)--; 
     }
     
-	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[1]),CDATAHandleCmd,ts,CDATACCommandDeleteProc);
+	Tcl_CreateObjCommandNS(interp,client,Tcl_GetString(objv[1]),CDATAHandleCmd,ts,CDATACCommandDeleteProc);
 
 	//Tcl_SetObjResult(interp, objv[1]);
 	return TCL_OK;
@@ -3572,6 +3679,8 @@ void CCallbackCallback (CInvFunction *f, void *args[], void *returnout,void *use
 	if(ctx==NULL) return;
 	interp=ts->interp;
 	if(interp==NULL) return;
+	cinv_client* client=ts->ccinv_client;
+    if(check_cinv_client(client,__LINE__)<0) return ;
 	
     if (Tcl_ListObjGetElements(interp, ts->paramlist, &paramlength, &paramlist)!=TCL_OK) {
         return;
@@ -3587,7 +3696,7 @@ void CCallbackCallback (CInvFunction *f, void *args[], void *returnout,void *use
     for (int i=0;i<paramlength;i++) {
         // test params
         int ntype;
-        if (get_type_from_str(interp,paramlist[i],&ntype,&xtype)!=TCL_OK) return;
+        if (get_type_from_str(interp,client,paramlist[i],&ntype,&xtype)!=TCL_OK) return;
         obj=set_obj_from_value(interp,ntype,xtype,args[i], -1);
         if(obj==NULL) {
             Tcl_AppendResult(interp,"Error No result from ",Tcl_GetString(paramlist[i]),NULL);
@@ -3613,7 +3722,7 @@ void CCallbackCallback (CInvFunction *f, void *args[], void *returnout,void *use
         Tcl_Obj* _tmpVar_cmdResultObj;
         _tmpVar_cmdResultObj= Tcl_GetObjResult(interp);
         // ts->xtype doesn't work, need to copy beforehand on creation
-        if(get_type_from_str(interp,returninfo, &return_type,&xtype)!=TCL_OK) return;
+        if(get_type_from_str(interp,client,returninfo, &return_type,&xtype)!=TCL_OK) return;
         if(get_value_from_obj(interp,return_type,xtype,_tmpVar_cmdResultObj,returnout,&oklen)!=TCL_OK) return;
         type_release(xtype);
     }
@@ -3699,6 +3808,8 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	int paramlength;
     char *retsig,*paramsig;
    	retsig="\0\0";
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
 	if (objc < 2 || objc > 5) {
 		Tcl_WrongNumArgs(interp, 1, objv, "objname tclprocname returntype argumenttypes");
 		return TCL_ERROR;
@@ -3712,7 +3823,8 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	ts = cinv_alloc(sizeof(TclCCallbackState),MEM_TCL,"CCallbackCreateCmd",__LINE__);
 	ts->ctx = ctx;
 	ts->interp=interp;
-	ts->xtype=NULL;
+	ts->ccinv_client=client;
+    ts->xtype=NULL;
 	ts->tcl_procname=tcl_strdup(Tcl_GetString(objv[2]));
     ts->int_type=-1;
     ts->return_type=-1;
@@ -3721,7 +3833,7 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	char* retstr=Tcl_GetString(objv[3]);
 	if(strlen(retstr)>0) { 
 	    ts->returninfo=tcl_strdup(retstr);
-        if (get_type_from_str(interp,objv[3], &return_type,NULL)!=TCL_OK) return TCL_ERROR;
+        if (get_type_from_str(interp,client,objv[3], &return_type,NULL)!=TCL_OK) return TCL_ERROR;
         if (return_type<0) {
             Tcl_AppendResult(interp, "Unknown type ",TclGetString(objv[3]),NULL);
             return TCL_ERROR;
@@ -3748,7 +3860,7 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
         for (i=0;i<paramlength;i++) {
             // test params
             int ntype;
-            if (get_type_from_str(interp,paramlist[i],&ntype,NULL)!=TCL_OK) return TCL_ERROR;
+            if (get_type_from_str(interp,client,paramlist[i],&ntype,NULL)!=TCL_OK) return TCL_ERROR;
             paramsig[i]=isig_type(ntype)[0];
         }
         paramsig[i]='\0';
@@ -3771,31 +3883,36 @@ static int CCallbackCreateCmd(ClientData cdata, Tcl_Interp *interp, int objc, Tc
 	void *e = cinv_callback_getentrypoint(ctx, cb);
 	ts->entrypoint=e;
 	
-	Tcl_CreateObjCommandNS(interp,Tcl_GetString(objv[1]),CCallbackHandleCmd,ts,CCallbackCCommandDeleteProc);
+	Tcl_CreateObjCommandNS(interp,client,Tcl_GetString(objv[1]),CCallbackHandleCmd,ts,CCallbackCCommandDeleteProc);
 
 	//Tcl_SetObjResult(interp, objv[1]);
     if(paramsig!=NULL) cinv_free(paramsig,MEM_TCL);	
 	return TCL_OK;
 }
 
-static int listtypes (Tcl_Interp* interp) {
+static int listtypes (ClientData cdata,Tcl_Interp* interp) {
     Tcl_HashSearch search;
     Tcl_HashEntry *entry;
-    for (entry = Tcl_FirstHashEntry(&cinvclient->types, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
-        Tcl_AppendResult(interp,Tcl_GetHashKey(&cinvclient->types,entry)," ",NULL);
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+    for (entry = Tcl_FirstHashEntry(&client->types, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
+        Tcl_AppendResult(interp,Tcl_GetHashKey(&client->types,entry)," ",NULL);
     }
-    for (entry = Tcl_FirstHashEntry(&cinvclient->dyntypes, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
-        Tcl_AppendResult(interp,Tcl_GetHashKey(&cinvclient->dyntypes,entry)," ",NULL);
+    for (entry = Tcl_FirstHashEntry(&client->dyntypes, &search); entry != NULL; entry = Tcl_NextHashEntry(&search)) {
+        Tcl_AppendResult(interp,Tcl_GetHashKey(&client->dyntypes,entry)," ",NULL);
     }
     return TCL_OK;
 }    
 static int CTypeSize (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj * CONST objv[]) {
     int int_type;
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
+    
     if (objc < 2) {
         Tcl_WrongNumArgs(interp, 1, objv, "typename");
         return TCL_ERROR;
     }
-    if ((get_type_from_str(interp,objv[1],&int_type,NULL)!=TCL_OK)||(int_type<0)) {
+    if ((get_type_from_str(interp,client,objv[1],&int_type,NULL)!=TCL_OK)||(int_type<0)) {
         Tcl_SetObjResult(interp, Tcl_NewIntObj(0));
         return TCL_OK;
     }
@@ -3806,16 +3923,18 @@ static int CTypeDefine (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj 
     //
     char* typename;
     int size, issigned;
+    cinv_client *client = (cinv_client *)cdata;
+    if(check_cinv_client(client,__LINE__)<0) return TCL_ERROR;
     CInv_Type* ftype;    
     int int_type;
     if (objc < 3) {
         if(objc==1) {
-            listtypes(interp);
+            listtypes(client,interp);
             return TCL_OK;
         }
         if(objc==2) {
             Tcl_ResetResult(interp);
-            if ((get_type_from_str(interp,objv[1],&int_type,NULL)!=TCL_OK)||(int_type<0)) {
+            if ((get_type_from_str(interp,client,objv[1],&int_type,NULL)!=TCL_OK)||(int_type<0)) {
                 Tcl_ResetResult(interp);
                 return TCL_OK;
             }
@@ -3832,7 +3951,7 @@ static int CTypeDefine (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj 
         return TCL_ERROR;
     }
     CInv_Type* xtype;
-    if (get_type_from_str(interp,objv[1],&int_type,&xtype)!=TCL_OK) return TCL_ERROR;
+    if (get_type_from_str(interp,client,objv[1],&int_type,&xtype)!=TCL_OK) return TCL_ERROR;
     ftype=xtype;
     if (objc>4) {
         if (Tcl_GetIntFromObj(interp,objv[3],&size)) return TCL_ERROR;
@@ -3866,7 +3985,7 @@ static int CTypeDefine (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj 
     //printf("Defining type %s as %s\n",typename, Tcl_GetString(objv[1]));
     //printf("got detailed info on type: %d %d sz %d sig %d ptr %d\n",ftype->cinv_basetype, ftype->cinv_inttype, ftype->size, ftype->isSigned,ftype->isPtr);
     
-    type_define_dyn(cinvclient, typename, ftype);
+    type_define_dyn(client, typename, ftype);
     return TCL_OK;
 }
 static int CPointerCast (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj * CONST objv[]) {
@@ -3883,54 +4002,31 @@ static int CPointerCast (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj
     return TCL_OK;
 }
 static int CCleanup (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj * CONST objv[]) {
-    client_delete(cinvclient, interp);
-    cinvclient=NULL;
-    client_delete(cinvclient, interp);
+    cinv_client *client = (cinv_client *)cdata;
+    client_delete(client, interp);
 #ifdef MEMDEBUG
-	tcc_memcheck();
+	mdbg_memcheck();
 #endif
+    globalinterp=NULL;
     return TCL_OK;
 }
 
-#if (defined(_WIN32) && (defined(_MSC_VER)|| defined(__TINYC__)  || (defined(__BORLANDC__) && (__BORLANDC__ >= 0x0550)) || defined(__LCC__) || defined(__WATCOMC__) || (defined(__GNUC__) && defined(__declspec))))
-#undef DLLIMPORT
-#undef DLLEXPORT
-#   define DLLIMPORT __declspec(dllimport)
-#   define DLLEXPORT __declspec(dllexport)
-#else
-#undef DLLIMPORT
-#undef DLLEXPORT
-#   define DLLIMPORT __attribute__(dllimport)
-#   if defined(__GNUC__) && __GNUC__ > 3
-#       define DLLEXPORT __attribute__ ((visibility("default")))
-#   else
-#       define DLLEXPORT
-#   endif
-#endif
-
-DLLEXPORT
-int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
+static int CInit (ClientData cdata, Tcl_Interp* interp, int objc, Tcl_Obj * CONST objv[]) {
+    //
     globalinterp=interp;
-    //return TCL_OK;
-
-#ifdef USE_TCL_STUBS
-	if (Tcl_InitStubs(interp, TCL_VERSION , 0) == 0L) {
-		return TCL_ERROR;
-	}
-#endif
-    
-    cinvclient = client_alloc(interp);
-	Tcl_CreateObjCommand(interp, "CInvoke", CInvokeCreateCmd, NULL, NULL);
-	Tcl_CreateObjCommand(interp, "CStruct", CStructDeclareCmd, NULL, NULL);
-	Tcl_CreateObjCommand(interp, "CType", CTypeCreateCmd, NULL, NULL);
-	Tcl_CreateObjCommand(interp, "CDATA", CDATACreateCmd, NULL, NULL);
-	Tcl_CreateObjCommand(interp, "CCallback", CCallbackCreateCmd, NULL, NULL);
-	Tcl_CreateObjCommand(interp, "typedef", CTypeDefine, NULL,NULL);
-	Tcl_CreateObjCommand(interp, "sizeof", CTypeSize, NULL,NULL);
-	Tcl_CreateObjCommand(interp, "CCleanup", CCleanup, NULL,NULL);
-	Tcl_CreateObjCommand(interp, "PointerCast", CPointerCast, NULL,NULL);
-	
-	Cinv_Init(interp);
+    cinv_client* client=client_alloc(interp);
+    //cinvclient = client;
+	Tcl_CreateObjCommand(interp, "CInvoke", CInvokeCreateCmd, client, NULL);
+	Tcl_CreateObjCommand(interp, "CStruct", CStructDeclareCmd, client, NULL);
+	Tcl_CreateObjCommand(interp, "CType", CTypeCreateCmd, client, NULL);
+	Tcl_CreateObjCommand(interp, "CDATA", CDATACreateCmd, client, NULL);
+	Tcl_CreateObjCommand(interp, "CCallback", CCallbackCreateCmd, client, NULL);
+	Tcl_CreateObjCommand(interp, "typedef", CTypeDefine, client,NULL);
+	Tcl_CreateObjCommand(interp, "sizeof", CTypeSize, client,NULL);
+	Tcl_CreateObjCommand(interp, "CCleanup", CCleanup, client,NULL);
+	Tcl_CreateObjCommand(interp, "CInit", CInit, NULL,NULL);
+	Tcl_CreateObjCommand(interp, "PointerCast", CPointerCast, client,NULL);
+    Cinv_Init(interp);
 	
 	/* static  unsigned types */
     static CInv_Type cinv_type_uchar = init_type(sizeof(char), _CINV_T_CHAR, _CINV_T_CHAR, 0, 0, 0);
@@ -3939,23 +4035,23 @@ int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
     static CInv_Type cinv_type_ulong = init_type(sizeof(long), _CINV_T_LONG, _CINV_T_LONG, 0,0, 0);
     static CInv_Type cinv_type_ulonglong = init_type(sizeof(long long), _CINV_T_EXTRALONG, _CINV_T_EXTRALONG, 0,0, 0);
     
-	type_define(cinvclient, "uchar", &cinv_type_uchar);
-	type_define(cinvclient, "ushort", &cinv_type_ushort);
-	type_define(cinvclient, "uint", &cinv_type_uint);
-	type_define(cinvclient, "ulong", &cinv_type_ulong);
-	type_define(cinvclient, "ulonglong", &cinv_type_ulonglong);
+	type_define(client, "uchar", &cinv_type_uchar);
+	type_define(client, "ushort", &cinv_type_ushort);
+	type_define(client, "uint", &cinv_type_uint);
+	type_define(client, "ulong", &cinv_type_ulong);
+	type_define(client, "ulonglong", &cinv_type_ulonglong);
 	
 	/* dynamic types */
 	
-	type_define_dyn(cinvclient, "int8_t", size_type(NULL,1,1,"int8_t"));
-	type_define_dyn(cinvclient, "uint8_t", size_type(NULL,1,0,"uint8_t"));
-	type_define_dyn(cinvclient, "int16_t", size_type(NULL,2,1,"int16_t"));
-	type_define_dyn(cinvclient, "uint16_t", size_type(NULL,2,0,"uint16_t"));
-	type_define_dyn(cinvclient, "int32_t", size_type(NULL,4,1,"int32_t"));
-	type_define_dyn(cinvclient, "uint32_t", size_type(NULL,4,0,"uint32_t"));
-	type_define_dyn(cinvclient, "int64_t", size_type(NULL,8,1,"int64_t"));
-	type_define_dyn(cinvclient, "uint64_t", size_type(NULL,8,0,"uint64_t"));
-
+	type_define_dyn(client, "int8_t", size_type(NULL,1,1,"int8_t"));
+	type_define_dyn(client, "uint8_t", size_type(NULL,1,0,"uint8_t"));
+	type_define_dyn(client, "int16_t", size_type(NULL,2,1,"int16_t"));
+	type_define_dyn(client, "uint16_t", size_type(NULL,2,0,"uint16_t"));
+	type_define_dyn(client, "int32_t", size_type(NULL,4,1,"int32_t"));
+	type_define_dyn(client, "uint32_t", size_type(NULL,4,0,"uint32_t"));
+	type_define_dyn(client, "int64_t", size_type(NULL,8,1,"int64_t"));
+	type_define_dyn(client, "uint64_t", size_type(NULL,8,0,"uint64_t"));
+	
     ADDINTTYPE(_Bool);
     typedef _Bool bool;
     ADDINTTYPE(bool);
@@ -4022,6 +4118,37 @@ int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
     ADDINTTYPE(time_t);
     ADDINTTYPE(uid_t);
 #endif
+    return TCL_OK;
+}
+
+
+#if (defined(_WIN32) && (defined(_MSC_VER)|| defined(__TINYC__)  || (defined(__BORLANDC__) && (__BORLANDC__ >= 0x0550)) || defined(__LCC__) || defined(__WATCOMC__) || (defined(__GNUC__) && defined(__declspec))))
+#undef DLLIMPORT
+#undef DLLEXPORT
+#   define DLLIMPORT __declspec(dllimport)
+#   define DLLEXPORT __declspec(dllexport)
+#else
+#undef DLLIMPORT
+#undef DLLEXPORT
+#   define DLLIMPORT __attribute__(dllimport)
+#   if defined(__GNUC__) && __GNUC__ > 3
+#       define DLLEXPORT __attribute__ ((visibility("default")))
+#   else
+#       define DLLEXPORT
+#   endif
+#endif
+
+DLLEXPORT
+int Cinvoke_tclcmd_Init(Tcl_Interp *interp) {
+    globalinterp=interp;
+    //return TCL_OK;
+
+#ifdef USE_TCL_STUBS
+	if (Tcl_InitStubs(interp, TCL_VERSION , 0) == 0L) {
+		return TCL_ERROR;
+	}
+#endif
+    CInit (NULL, interp, 0, NULL);
     Tcl_PkgProvide(interp, "tclcinvoke", "1.0");        
 	return TCL_OK;
 }

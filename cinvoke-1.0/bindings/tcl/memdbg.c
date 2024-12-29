@@ -46,9 +46,12 @@ static inline void add64le(unsigned char *p, int64_t x) {
     write64le(p, read64le(p) + x);
 }
 */
-#define MEM_DEBUG_MAGIC1 0xFEEDDEB1
-#define MEM_DEBUG_MAGIC2 0xFEEDDEB2
-#define MEM_DEBUG_MAGIC3 0xFEEDDEB3
+//#define MEM_DEBUG_MAGIC1 0xFEEDDEB1
+//#define MEM_DEBUG_MAGIC2 0xFEEDDEB2
+//#define MEM_DEBUG_MAGIC3 0xFEEDDEB3
+#define MEM_DEBUG_MAGIC1 0xCEEDDEB1
+#define MEM_DEBUG_MAGIC2 0xCEEDDEB2
+#define MEM_DEBUG_MAGIC3 0xCEEDDEB3
 #define MEM_DEBUG_FILE_LEN 40
 #define MEM_DEBUG_CHECK3(header) \
     ((mem_debug_header_t*)((char*)header + header->size))->magic3
@@ -81,7 +84,7 @@ static mem_debug_header_t *malloc_check(void *ptr, const char *msg)
         header->magic2 != MEM_DEBUG_MAGIC2 ||
         read32le(MEM_DEBUG_CHECK3(header)) != MEM_DEBUG_MAGIC3 ||
         header->size == (unsigned)-1) {
-        printf( "%s check failed\n", msg);
+        printf( "%s check failed %p\n", msg,ptr);
         if (header->magic1 == MEM_DEBUG_MAGIC1)
             printf( "%s:%u: block allocated here.\n",
                 header->file_name, header->line_num);
@@ -91,7 +94,7 @@ static mem_debug_header_t *malloc_check(void *ptr, const char *msg)
     return header;
 }
 
-DLLEXPORT void *tcc_malloc_debug(unsigned long size, const char *file, int line)
+DLLEXPORT void *mdbg_malloc_debug(unsigned long size, const char *file, int line)
 {
     int ofs;
     mem_debug_header_t *header;
@@ -124,12 +127,12 @@ DLLEXPORT void *tcc_malloc_debug(unsigned long size, const char *file, int line)
     return MEM_USER_PTR(header);
 }
 
-DLLEXPORT void tcc_free_debug(void *ptr)
+DLLEXPORT void mdbg_free_debug(void *ptr)
 {
     mem_debug_header_t *header;
     if (!ptr)
         return;
-    header = malloc_check(ptr, "tcc_free");
+    header = malloc_check(ptr, "mdbg_free");
     if(!header) return;
     mem_cur_size -= header->size;
     header->size = (unsigned)-1;
@@ -142,21 +145,21 @@ DLLEXPORT void tcc_free_debug(void *ptr)
     free(header);
 }
 
-DLLEXPORT void *tcc_mallocz_debug(unsigned long size, const char *file, int line)
+DLLEXPORT void *mdbg_mallocz_debug(unsigned long size, const char *file, int line)
 {
     void *ptr;
-    ptr = tcc_malloc_debug(size,file,line);
+    ptr = mdbg_malloc_debug(size,file,line);
     memset(ptr, 0, size);
     return ptr;
 }
 
-DLLEXPORT void *tcc_realloc_debug(void *ptr, unsigned long size, const char *file, int line)
+DLLEXPORT void *mdbg_realloc_debug(void *ptr, unsigned long size, const char *file, int line)
 {
     mem_debug_header_t *header;
     int mem_debug_chain_update = 0;
     if (!ptr)
-        return tcc_malloc_debug(size, file, line);
-    header = malloc_check(ptr, "tcc_realloc");
+        return mdbg_malloc_debug(size, file, line);
+    header = malloc_check(ptr, "mdbg_realloc");
     if(!header) return NULL;
     mem_cur_size -= header->size;
     mem_debug_chain_update = (header == mem_debug_chain);
@@ -179,14 +182,14 @@ DLLEXPORT void *tcc_realloc_debug(void *ptr, unsigned long size, const char *fil
     return MEM_USER_PTR(header);
 }
 
-DLLEXPORT char *tcc_strdup_debug(const char *str, const char *file, int line)
+DLLEXPORT char *mdbg_strdup_debug(const char *str, const char *file, int line)
 {
     char *ptr;
-    ptr = tcc_malloc_debug(strlen(str) + 1, file, line);
+    ptr = mdbg_malloc_debug(strlen(str) + 1, file, line);
     strcpy(ptr, str);
     return ptr;
 }
-DLLEXPORT void tcc_memcheck(void)
+DLLEXPORT void mdbg_memcheck(void)
 {
     printf( "MEM_DEBUG START\n");
     if (mem_cur_size) {
