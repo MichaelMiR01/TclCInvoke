@@ -1,3 +1,5 @@
+#ifndef POINTERHELPER_H
+#define POINTERHELPER_H
 /* Taken from cffi project
  * Pointer is a Tcl "type" whose internal representation is stored
  * as the pointer value and an associated C pointer/handle type.
@@ -88,7 +90,7 @@ SetPointerFromAny(Tcl_Interp *interp, Tcl_Obj *objP)
     Tclh_PointerTypeTag tagObj;
     char *srep;
     char *s;
-
+    
     if (objP->typePtr == &gPointerType)
         return TCL_OK;
 
@@ -100,18 +102,30 @@ SetPointerFromAny(Tcl_Interp *interp, Tcl_Obj *objP)
     if (sizeof(void*) == sizeof(int)) {
         //snprintf(buf, buflen, "0x%.8x", i);
         scansucc=sscanf(srep, "0x%x", (unsigned int*)&pv);
+        if (scansucc != 1) {
+            // try as interger
+            scansucc=sscanf(srep, "%u", (unsigned int*)&pv);
+        }
+        
     }
     else {
         //snprintf(buf, buflen, "0x%.16llx", ull);
         scansucc=sscanf(srep, "0x%llx", (unsigned long long int*) &pv);
+        if (scansucc != 1) {
+            // try as interger
+            scansucc=sscanf(srep, "%llu", (unsigned long long int*)&pv);
+        }
     }
    
    if (scansucc == 1) {
+        tagObj = NULL;
         s = strchr(srep, '^');
-        if (s == NULL)
-            goto invalid_value;
+        if (s == NULL) {
+            tagObj = Tcl_NewStringObj("",-1);
+            goto notag;
+        }
         if (s[1] == '\0')
-            tagObj = NULL;
+            tagObj = Tcl_NewStringObj("",-1);
         else {
             tagObj = Tcl_NewStringObj(s + 1, -1);
             Tcl_IncrRefCount(tagObj);
@@ -123,7 +137,7 @@ SetPointerFromAny(Tcl_Interp *interp, Tcl_Obj *objP)
         pv = NULL;
         tagObj = NULL;
     }
-
+notag:
     /* OK, valid opaque rep. Convert the passed object's internal rep */
     if (objP->typePtr && objP->typePtr->freeIntRepProc) {
         objP->typePtr->freeIntRepProc(objP);
@@ -249,7 +263,26 @@ Tclh_PointerUnwrap(Tcl_Interp *interp,
  * needs to match the pointer size of the platform: long on LP64, Tcl_WideInt on
  * LLP64 (e.g. WIN64).
  */
-#if SIZEOF_VOID_P == SIZEOF_LONG
+ 
+#include "stdint.h"
+
+#if INTPTR_MAX == INT32_MAX
+    #define THIS_IS_32_BIT_ENVIRONMENT
+    #define SIZEOF_VOID_P 4
+    #define INTTYPE int
+#elif INTPTR_MAX == INT64_MAX
+    #define THIS_IS_64_BIT_ENVIRONMENT
+    #define SIZEOF_VOID_P 8
+    #if SIZEOF_VOID_P == __SIZEOF_LONG__
+        #define INTTYPE long
+    #else
+        #define INTTYPE long long
+    #endif
+#else
+    #error "Environment not 32 or 64-bit."
+#endif
+ 
+#if SIZEOF_VOID_P == __SIZEOF_LONG__
 #  define CINV_POINTER_IS_LONG 1
 #elif SIZEOF_VOID_P == 8 && defined(HAVE_WIDE_INT)
 #  define CINV_POINTER_IS_LONG 0
@@ -330,3 +363,4 @@ static Tcl_Obj *PointerCast(Tcl_Interp* interp, Tcl_Obj* obj, Tcl_Obj* newtag) {
     Tcl_Obj*rv= Tclh_PointerWrap(pvP,newtag);
     return rv;
 }    
+#endif
